@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useAuthStore } from '@/store/authStore'
 import { api } from '@/lib/api'
-import { Avatar } from '@/components/common/Avatar'
+import { Avatar, PALETTE } from '@/components/common/Avatar'
+import { useProfileStore } from '@/store/profileStore'
 
 const FACE_COLORS = ['#fef9c3', '#dbeafe', '#dcfce7', '#fee2e2', '#ede9fe', '#fed7aa']
 
@@ -31,6 +32,7 @@ interface ProfileScreenProps {
 
 export function ProfileScreen({ onBack }: ProfileScreenProps) {
   const { user, updateUser } = useAuthStore()
+  const { avatarColor, setAvatarColor } = useProfileStore()
   const [tab, setTab] = useState<Tab>('profile')
   const [stats, setStats] = useState<Stats | null>(null)
   const [matches, setMatches] = useState<MatchRecord[]>([])
@@ -108,6 +110,7 @@ export function ProfileScreen({ onBack }: ProfileScreenProps) {
             nickname={user.nickname}
             size={60}
             border="3px solid rgba(255,255,255,0.4)"
+            customColor={avatarColor}
           />
           <div>
             <div style={{ fontSize: 20, fontWeight: 800, color: '#fff' }}>{user.nickname}</div>
@@ -191,9 +194,68 @@ export function ProfileScreen({ onBack }: ProfileScreenProps) {
               </div>
             </Section>
 
-            {/* 캐릭터 커스터마이징 — 준비 중 */}
-            <Section icon="🎨" title="캐릭터 커스터마이징">
-              <ComingSoon label="프로필 캐릭터 꾸미기 기능" />
+            {/* 아바타 배경색 선택 */}
+            <Section icon="🎨" title="아바타 배경색">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+                {/* 미리보기 */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                  <Avatar
+                    avatarUrl={user.avatarUrl}
+                    nickname={user.nickname}
+                    size={56}
+                    customColor={avatarColor}
+                    border="2px solid #e2e8f0"
+                  />
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>미리보기</div>
+                    <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
+                      {avatarColor ? '커스텀 색상 적용 중' : '닉네임 기반 자동 색상'}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 색상 팔레트 */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                  {PALETTE.map(color => (
+                    <button
+                      key={color}
+                      onClick={() => setAvatarColor(color)}
+                      style={{
+                        width: 40, height: 40,
+                        borderRadius: '50%',
+                        background: color,
+                        border: avatarColor === color
+                          ? '3px solid #1e293b'
+                          : '3px solid transparent',
+                        outline: avatarColor === color ? '2px solid #fff' : 'none',
+                        outlineOffset: '-4px',
+                        cursor: 'pointer',
+                        transition: 'transform 0.1s, border 0.1s',
+                        transform: avatarColor === color ? 'scale(1.15)' : 'scale(1)',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                      }}
+                    />
+                  ))}
+                </div>
+
+                {/* 자동 색상으로 초기화 */}
+                {avatarColor && (
+                  <button
+                    onClick={() => setAvatarColor(null)}
+                    style={{
+                      alignSelf: 'flex-start',
+                      fontSize: 12, fontWeight: 600,
+                      color: '#64748b', background: 'none',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: 8, padding: '5px 12px',
+                      cursor: 'pointer', fontFamily: 'inherit',
+                    }}
+                  >
+                    ↺ 자동 색상으로 초기화
+                  </button>
+                )}
+              </div>
             </Section>
 
             {/* 뱃지 — 준비 중 */}

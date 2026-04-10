@@ -15,6 +15,8 @@ function colorFromName(name: string): string {
   return PALETTE[Math.abs(hash) % PALETTE.length]
 }
 
+export { PALETTE }
+
 interface AvatarProps {
   avatarUrl: string | null | undefined
   nickname: string
@@ -22,9 +24,10 @@ interface AvatarProps {
   border?: string
   boxShadow?: string
   style?: React.CSSProperties
+  customColor?: string | null  // 사용자가 직접 선택한 색상
 }
 
-export function Avatar({ avatarUrl, nickname, size = 48, border, boxShadow, style }: AvatarProps) {
+export function Avatar({ avatarUrl, nickname, size = 48, border, boxShadow, style, customColor }: AvatarProps) {
   const base: React.CSSProperties = {
     width: size,
     height: size,
@@ -41,7 +44,7 @@ export function Avatar({ avatarUrl, nickname, size = 48, border, boxShadow, styl
   }
 
   const initial = (nickname ?? '?')[0].toUpperCase()
-  const bg = colorFromName(nickname ?? '?')
+  const bg = customColor ?? colorFromName(nickname ?? '?')
 
   return (
     <div style={{

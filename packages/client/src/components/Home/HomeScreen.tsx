@@ -3,6 +3,7 @@ import { useAuthStore } from '@/store/authStore'
 import { api } from '@/lib/api'
 import { socket } from '@/lib/socket'
 import { Avatar } from '@/components/common/Avatar'
+import { useProfileStore } from '@/store/profileStore'
 
 type HomeAction = 'idle' | 'room-create' | 'room-join' | 'room-matched'
 
@@ -24,6 +25,7 @@ interface Stats {
 
 export function HomeScreen({ onDeckEdit, onAiTrain, onRandomMatch, onPrivateMatch, onProfile, onRanking }: HomeScreenProps) {
   const { user } = useAuthStore()
+  const { avatarColor } = useProfileStore()
   const [stats, setStats] = useState<Stats | null>(null)
   const [action, setAction] = useState<HomeAction>('idle')
   const [roomCode, setRoomCode] = useState('')
@@ -153,7 +155,7 @@ export function HomeScreen({ onDeckEdit, onAiTrain, onRandomMatch, onPrivateMatc
           boxShadow: '0 4px 16px rgba(29,78,216,0.25)',
         }}
       >
-        <Avatar avatarUrl={user?.avatarUrl} nickname={user?.nickname ?? '?'} size={48} />
+        <Avatar avatarUrl={user?.avatarUrl} nickname={user?.nickname ?? '?'} size={48} customColor={avatarColor} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 16, fontWeight: 800, color: '#fff', marginBottom: 4 }}>{user?.nickname}</div>
           {stats ? (
