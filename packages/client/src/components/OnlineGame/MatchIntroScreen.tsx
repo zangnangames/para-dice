@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Avatar } from '@/components/common/Avatar'
 
 interface PlayerInfo {
   nickname: string
@@ -124,26 +125,13 @@ function PlayerCard({ player, side, label }: { player: PlayerCard_['player']; si
 
       {/* 아바타 */}
       <div style={{ position: 'relative' }}>
-        {player.avatarUrl ? (
-          <img
-            src={player.avatarUrl}
-            alt=""
-            style={{
-              width: 72, height: 72, borderRadius: '50%', objectFit: 'cover',
-              border: `3px solid ${side === 'left' ? '#3b82f6' : '#ef4444'}`,
-              boxShadow: `0 0 20px ${side === 'left' ? 'rgba(59,130,246,0.5)' : 'rgba(239,68,68,0.5)'}`,
-            }}
-          />
-        ) : (
-          <div style={{
-            width: 72, height: 72, borderRadius: '50%',
-            background: side === 'left' ? 'rgba(59,130,246,0.2)' : 'rgba(239,68,68,0.2)',
-            border: `3px solid ${side === 'left' ? '#3b82f6' : '#ef4444'}`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 30,
-            boxShadow: `0 0 20px ${side === 'left' ? 'rgba(59,130,246,0.4)' : 'rgba(239,68,68,0.4)'}`,
-          }}>👤</div>
-        )}
+        <Avatar
+          avatarUrl={player.avatarUrl}
+          nickname={player.nickname}
+          size={72}
+          border={`3px solid ${side === 'left' ? '#3b82f6' : '#ef4444'}`}
+          boxShadow={`0 0 20px ${side === 'left' ? 'rgba(59,130,246,0.5)' : 'rgba(239,68,68,0.5)'}`}
+        />
         {/* 연승 뱃지 */}
         {player.currentStreak >= 2 && (
           <div style={{

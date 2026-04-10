@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useAuthStore } from '@/store/authStore'
 import { api } from '@/lib/api'
 import { socket } from '@/lib/socket'
+import { Avatar } from '@/components/common/Avatar'
 
 type HomeAction = 'idle' | 'room-create' | 'room-join' | 'room-matched'
 
@@ -152,10 +153,7 @@ export function HomeScreen({ onDeckEdit, onAiTrain, onRandomMatch, onPrivateMatc
           boxShadow: '0 4px 16px rgba(29,78,216,0.25)',
         }}
       >
-        {user?.avatarUrl
-          ? <img src={user.avatarUrl} alt="" style={{ width: 48, height: 48, borderRadius: '50%', flexShrink: 0 }} />
-          : <div style={{ width: 48, height: 48, borderRadius: '50%', flexShrink: 0, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22 }}>👤</div>
-        }
+        <Avatar avatarUrl={user?.avatarUrl} nickname={user?.nickname ?? '?'} size={48} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 16, fontWeight: 800, color: '#fff', marginBottom: 4 }}>{user?.nickname}</div>
           {stats ? (

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useAuthStore } from '@/store/authStore'
 import { api } from '@/lib/api'
+import { Avatar } from '@/components/common/Avatar'
 
 const FACE_COLORS = ['#fef9c3', '#dbeafe', '#dcfce7', '#fee2e2', '#ede9fe', '#fed7aa']
 
@@ -102,17 +103,12 @@ export function ProfileScreen({ onBack }: ProfileScreenProps) {
 
         {/* 아바타 + 이름 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
-          {user.avatarUrl ? (
-            <img src={user.avatarUrl} alt="avatar"
-              style={{ width: 60, height: 60, borderRadius: '50%', objectFit: 'cover', border: '3px solid rgba(255,255,255,0.4)' }} />
-          ) : (
-            <div style={{
-              width: 60, height: 60, borderRadius: '50%', flexShrink: 0,
-              background: 'rgba(255,255,255,0.2)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26,
-              border: '3px solid rgba(255,255,255,0.3)',
-            }}>👤</div>
-          )}
+          <Avatar
+            avatarUrl={user.avatarUrl}
+            nickname={user.nickname}
+            size={60}
+            border="3px solid rgba(255,255,255,0.4)"
+          />
           <div>
             <div style={{ fontSize: 20, fontWeight: 800, color: '#fff' }}>{user.nickname}</div>
             {stats && (
