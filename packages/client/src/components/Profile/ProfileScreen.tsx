@@ -45,6 +45,11 @@ export function ProfileScreen({ onBack }: ProfileScreenProps) {
   const [nicknameError, setNicknameError] = useState('')
   const [nicknameSuccess, setNicknameSuccess] = useState(false)
 
+  // 아바타 색상 편집 상태 (pendingColor = 미적용 선택, avatarColor = 저장된 색상)
+  const [pendingColor, setPendingColor] = useState<string | null>(avatarColor)
+  const [colorApplied, setColorApplied] = useState(false)
+  const isColorDirty = pendingColor !== avatarColor
+
   // 통계 로드
   useEffect(() => {
     if (!user) return
@@ -204,13 +209,15 @@ export function ProfileScreen({ onBack }: ProfileScreenProps) {
                     avatarUrl={user.avatarUrl}
                     nickname={user.nickname}
                     size={56}
-                    customColor={avatarColor}
+                    customColor={pendingColor}
                     border="2px solid #e2e8f0"
                   />
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>미리보기</div>
                     <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
-                      {avatarColor ? '커스텀 색상 적용 중' : '닉네임 기반 자동 색상'}
+                      {isColorDirty
+                        ? (pendingColor ? '색상 선택됨 — 아래 적용 버튼을 눌러주세요' : '초기화 예정 — 아래 적용 버튼을 눌러주세요')
+                        : (avatarColor ? '커스텀 색상 적용 중' : '닉네임 기반 자동 색상')}
                     </div>
                   </div>
                 </div>
@@ -220,41 +227,69 @@ export function ProfileScreen({ onBack }: ProfileScreenProps) {
                   {PALETTE.map(color => (
                     <button
                       key={color}
-                      onClick={() => setAvatarColor(color)}
+                      onClick={() => { setPendingColor(color); setColorApplied(false) }}
                       style={{
                         width: 40, height: 40,
                         borderRadius: '50%',
                         background: color,
-                        border: avatarColor === color
+                        border: pendingColor === color
                           ? '3px solid #1e293b'
                           : '3px solid transparent',
-                        outline: avatarColor === color ? '2px solid #fff' : 'none',
+                        outline: pendingColor === color ? '2px solid #fff' : 'none',
                         outlineOffset: '-4px',
                         cursor: 'pointer',
                         transition: 'transform 0.1s, border 0.1s',
-                        transform: avatarColor === color ? 'scale(1.15)' : 'scale(1)',
+                        transform: pendingColor === color ? 'scale(1.15)' : 'scale(1)',
                         boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
                       }}
                     />
                   ))}
                 </div>
 
-                {/* 자동 색상으로 초기화 */}
-                {avatarColor && (
+                {/* 하단 버튼 행 */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  {/* 적용하기 버튼 */}
                   <button
-                    onClick={() => setAvatarColor(null)}
+                    onClick={() => {
+                      setAvatarColor(pendingColor)
+                      setColorApplied(true)
+                      setTimeout(() => setColorApplied(false), 2000)
+                    }}
+                    disabled={!isColorDirty}
                     style={{
-                      alignSelf: 'flex-start',
-                      fontSize: 12, fontWeight: 600,
-                      color: '#64748b', background: 'none',
-                      border: '1px solid #e2e8f0',
-                      borderRadius: 8, padding: '5px 12px',
-                      cursor: 'pointer', fontFamily: 'inherit',
+                      padding: '9px 20px', borderRadius: 10, border: 'none',
+                      background: isColorDirty ? '#2563eb' : '#e2e8f0',
+                      color: isColorDirty ? '#fff' : '#94a3b8',
+                      fontWeight: 700, fontSize: 13,
+                      cursor: isColorDirty ? 'pointer' : 'default',
+                      fontFamily: 'inherit',
+                      transition: 'background 0.15s, color 0.15s',
                     }}
                   >
-                    ↺ 자동 색상으로 초기화
+                    적용하기
                   </button>
-                )}
+
+                  {/* 자동 색상으로 초기화 */}
+                  {(avatarColor || pendingColor) && (
+                    <button
+                      onClick={() => { setPendingColor(null); setColorApplied(false) }}
+                      style={{
+                        fontSize: 12, fontWeight: 600,
+                        color: '#64748b', background: 'none',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: 8, padding: '8px 12px',
+                        cursor: 'pointer', fontFamily: 'inherit',
+                      }}
+                    >
+                      ↺ 자동 색상
+                    </button>
+                  )}
+
+                  {/* 적용 완료 피드백 */}
+                  {colorApplied && (
+                    <span style={{ fontSize: 12, fontWeight: 600, color: '#16a34a' }}>✓ 적용되었습니다</span>
+                  )}
+                </div>
               </div>
             </Section>
 
