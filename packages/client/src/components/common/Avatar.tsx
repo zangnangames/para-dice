@@ -1,7 +1,7 @@
 /**
  * 공통 아바타 컴포넌트
- * - avatarUrl 있으면 이미지 표시
- * - 없으면 닉네임 첫 글자 + 단색 배경
+ * - 닉네임 첫 글자 + 단색 배경 (커스텀 색상 우선, 없으면 닉네임 해시 자동 배색)
+ * - avatarUrl은 사용하지 않음 (커스텀 아바타만 사용)
  */
 
 const PALETTE = [
@@ -18,7 +18,7 @@ function colorFromName(name: string): string {
 export { PALETTE }
 
 interface AvatarProps {
-  avatarUrl: string | null | undefined
+  avatarUrl?: string | null  // 더 이상 사용하지 않음 (하위 호환용)
   nickname: string
   size?: number
   border?: string
@@ -27,28 +27,19 @@ interface AvatarProps {
   customColor?: string | null  // 사용자가 직접 선택한 색상
 }
 
-export function Avatar({ avatarUrl, nickname, size = 48, border, boxShadow, style, customColor }: AvatarProps) {
-  const base: React.CSSProperties = {
-    width: size,
-    height: size,
-    borderRadius: '50%',
-    flexShrink: 0,
-    border,
-    boxShadow,
-    objectFit: 'cover',
-    ...style,
-  }
-
-  if (avatarUrl) {
-    return <img src={avatarUrl} alt="" style={base} />
-  }
-
+export function Avatar({ nickname, size = 48, border, boxShadow, style, customColor }: AvatarProps) {
   const initial = (nickname ?? '?')[0].toUpperCase()
   const bg = customColor ?? colorFromName(nickname ?? '?')
 
   return (
     <div style={{
-      ...base,
+      width: size,
+      height: size,
+      borderRadius: '50%',
+      flexShrink: 0,
+      border,
+      boxShadow,
+      ...style,
       background: bg,
       display: 'flex',
       alignItems: 'center',
