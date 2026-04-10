@@ -1,5 +1,6 @@
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
+import cookie from '@fastify/cookie'
 import fjwt from '@fastify/jwt'
 import { Server } from 'socket.io'
 import authPlugin from './plugins/auth.js'
@@ -14,6 +15,7 @@ const app = Fastify({ logger: true, trustProxy: true })
 const clientUrl = process.env.CLIENT_URL ?? 'http://localhost:5173'
 
 await app.register(cors, { origin: clientUrl, credentials: true })
+await app.register(cookie)  // OAuth state 쿠키 저장에 필요 — oauthPlugin 보다 먼저 등록
 await app.register(fjwt, { secret: process.env.JWT_SECRET ?? 'dev-secret-change-in-production' })
 await app.register(authPlugin)
 await app.register(oauthPlugin)

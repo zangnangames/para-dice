@@ -86,6 +86,9 @@ importers:
       '@dice-game/core':
         specifier: workspace:*
         version: link:../core
+      '@fastify/cookie':
+        specifier: ^9.0.0
+        version: 9.4.0
       '@fastify/cors':
         specifier: ^9.0.1
         version: 9.0.1
