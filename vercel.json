@@ -1,0 +1,6 @@
+{
+  "buildCommand": "pnpm install --frozen-lockfile && pnpm --filter @dice-game/client build",
+  "outputDirectory": "packages/client/dist",
+  "installCommand": "echo 'skip'",
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+}

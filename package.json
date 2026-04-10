@@ -1,0 +1,10 @@
+{
+  "name": "dice-game",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "pnpm -r test",
+    "dev:client": "pnpm --filter @dice-game/client dev",
+    "dev:server": "pnpm --filter @dice-game/server dev"
+  }
+}

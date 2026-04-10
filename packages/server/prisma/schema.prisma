@@ -1,0 +1,106 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── 유저 ──────────────────────────────────────────────────────
+model User {
+  id        String   @id @default(cuid())
+  googleId  String   @unique
+  email     String   @unique
+  nickname  String
+  avatarUrl String?
+  createdAt DateTime @default(now())
+
+  decks      Deck[]
+  stats      UserStats?
+  matchesAsA Match[]    @relation("PlayerA")
+  matchesAsB Match[]    @relation("PlayerB")
+}
+
+// ── 계정 전적 (1:1) ──────────────────────────────────────────
+model UserStats {
+  id            String @id @default(cuid())
+  userId        String @unique
+  totalWins     Int    @default(0)
+  totalLosses   Int    @default(0)
+  currentStreak Int    @default(0)
+  maxStreak     Int    @default(0)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ── 덱 ───────────────────────────────────────────────────────
+model Deck {
+  id        String   @id @default(cuid())
+  name      String
+  userId    String
+  createdAt DateTime @default(now())
+
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dice       Die[]
+  stats      DeckStats?
+  matchesAsA Match[]   @relation("DeckA")
+  matchesAsB Match[]   @relation("DeckB")
+}
+
+// ── 덱 승률 (1:1) ────────────────────────────────────────────
+model DeckStats {
+  id         String @id @default(cuid())
+  deckId     String @unique
+  totalGames Int    @default(0)
+  wins       Int    @default(0)
+  losses     Int    @default(0)
+
+  deck Deck @relation(fields: [deckId], references: [id], onDelete: Cascade)
+}
+
+// ── 주사위 ───────────────────────────────────────────────────
+model Die {
+  id     String @id @default(cuid())
+  deckId String
+  faces  Int[]
+  order  Int
+
+  deck Deck @relation(fields: [deckId], references: [id], onDelete: Cascade)
+}
+
+// ── 대전 ─────────────────────────────────────────────────────
+model Match {
+  id         String     @id @default(cuid())
+  playerAId  String
+  playerBId  String
+  deckAId    String
+  deckBId    String
+  winnerId   String?
+  state      MatchState @default(DRAFT)
+  createdAt  DateTime   @default(now())
+  finishedAt DateTime?
+
+  playerA User  @relation("PlayerA", fields: [playerAId], references: [id])
+  playerB User  @relation("PlayerB", fields: [playerBId], references: [id])
+  deckA   Deck  @relation("DeckA", fields: [deckAId], references: [id])
+  deckB   Deck  @relation("DeckB", fields: [deckBId], references: [id])
+  rounds  Round[]
+}
+
+// ── 라운드 ───────────────────────────────────────────────────
+model Round {
+  id       String @id @default(cuid())
+  matchId  String
+  number   Int
+  winnerId String
+  rolls    Json
+
+  match Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+}
+
+enum MatchState {
+  DRAFT
+  IN_PROGRESS
+  FINISHED
+}
