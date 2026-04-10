@@ -9,6 +9,7 @@ import { RankingScreen } from './components/Ranking/RankingScreen'
 import { MatchmakingScreen } from './components/Matchmaking/MatchmakingScreen'
 import { OnlineGameScreen } from './components/OnlineGame/OnlineGameScreen'
 import { useAuthStore } from './store/authStore'
+import { useDeckStore } from './store/deckStore'
 import { socket } from './lib/socket'
 
 type Screen =
@@ -21,7 +22,8 @@ type Screen =
   | 'online-game'   // Phase 3 후속 (방 입장 후 게임)
 
 export default function App() {
-  const { isLoggedIn, logout } = useAuthStore()
+  const { isLoggedIn, logout: authLogout } = useAuthStore()
+  const resetDeck = useDeckStore(s => s.resetDeck)
   const [screen, setScreen] = useState<Screen>('home')
   const [guestMode, setGuestMode] = useState(false)
   const [currentMatchId, setCurrentMatchId] = useState<string | null>(null)
@@ -153,7 +155,7 @@ export default function App() {
 
         {loggedIn ? (
           <button
-            onClick={logout}
+            onClick={() => { authLogout(); resetDeck() }}
             style={{
               background: 'none', border: '1px solid #e2e8f0', cursor: 'pointer',
               fontSize: 12, color: '#94a3b8', padding: '4px 10px', borderRadius: 6,

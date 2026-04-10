@@ -31,8 +31,19 @@ export function DeckBuilder({ onDone }: DeckBuilderProps) {
       const dicePayload = deck.dice.map(d => ({ faces: [...d.faces] }))
 
       if (serverId) {
-        // 기존 덱 업데이트
-        await api.decks.update(serverId, deck.name, dicePayload)
+        try {
+          // 기존 덱 업데이트 시도
+          await api.decks.update(serverId, deck.name, dicePayload)
+        } catch (updateErr: any) {
+          // 404: 서버에 덱이 없음(삭제됐거나 다른 계정) → 새로 생성
+          if (updateErr.message?.includes('Not found') || updateErr.message?.includes('404')) {
+            setServerId(null)
+            const created = await api.decks.create(deck.name, dicePayload) as any
+            setServerId(created.id)
+          } else {
+            throw updateErr
+          }
+        }
       } else {
         // 새 덱 생성
         const created = await api.decks.create(deck.name, dicePayload) as any
