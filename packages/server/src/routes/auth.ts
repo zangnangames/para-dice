@@ -41,8 +41,9 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       const clientUrl = process.env.CLIENT_URL ?? 'http://localhost:5173'
       return reply.redirect(`${clientUrl}/auth/callback?token=${token}`)
     } catch (err) {
-      app.log.error(err as Error)
-      return reply.status(500).send({ error: 'OAuth failed' })
+      app.log.error({ err }, 'OAuth callback failed')
+      const message = err instanceof Error ? err.message : String(err)
+      return reply.status(500).send({ error: 'OAuth failed', detail: message })
     }
   })
 

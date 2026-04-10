@@ -9,7 +9,7 @@ import { deckRoutes } from './routes/decks.js'
 import { statsRoutes } from './routes/stats.js'
 import { registerSocketHandlers } from './socket/index.js'
 
-const app = Fastify({ logger: true })
+const app = Fastify({ logger: true, trustProxy: true })
 
 const clientUrl = process.env.CLIENT_URL ?? 'http://localhost:5173'
 
