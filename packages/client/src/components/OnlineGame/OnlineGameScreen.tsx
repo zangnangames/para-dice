@@ -606,7 +606,10 @@ export function OnlineGameScreen({ matchId, onExit, onRematch }: OnlineGameScree
                 </div>
               )}
             </div>
+          </>
+        )}
 
+        {/* ── 동점 오버레이 (isRoundResult 블록 밖으로 분리) ── */}
         {isRoundDraw && latestRoll && (
           <>
             {/* 배경 블러 */}
@@ -654,7 +657,7 @@ export function OnlineGameScreen({ matchId, onExit, onRematch }: OnlineGameScree
                 </div>
               </div>
 
-              {/* 재대결 뱃지 */}
+              {/* 재굴림 뱃지 */}
               <div style={{
                 height: 34,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -685,17 +688,15 @@ export function OnlineGameScreen({ matchId, onExit, onRematch }: OnlineGameScree
           </>
         )}
 
-            <style>{`
-              @keyframes fadeIn  { from { opacity: 0 } to { opacity: 1 } }
-              @keyframes slideUp { from { opacity: 0; transform: translate(-50%, -44%) } to { opacity: 1; transform: translate(-50%, -50%) } }
-              @keyframes popIn   { from { opacity: 0; transform: scale(0.7) } to { opacity: 1; transform: scale(1) } }
-              @keyframes dotBounce {
-                0%, 80%, 100% { transform: translateY(0); opacity: 0.4 }
-                40% { transform: translateY(-5px); opacity: 1 }
-              }
-            `}</style>
-          </>
-        )}
+        <style>{`
+          @keyframes fadeIn  { from { opacity: 0 } to { opacity: 1 } }
+          @keyframes slideUp { from { opacity: 0; transform: translate(-50%, -44%) } to { opacity: 1; transform: translate(-50%, -50%) } }
+          @keyframes popIn   { from { opacity: 0; transform: scale(0.7) } to { opacity: 1; transform: scale(1) } }
+          @keyframes dotBounce {
+            0%, 80%, 100% { transform: translateY(0); opacity: 0.4 }
+            40% { transform: translateY(-5px); opacity: 1 }
+          }
+        `}</style>
       </div>
     )
   }

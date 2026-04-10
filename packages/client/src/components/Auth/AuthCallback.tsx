@@ -14,6 +14,10 @@ export function AuthCallback({ onSuccess, onError }: AuthCallbackProps) {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const token = params.get('token')
+
+    // 보안: URL에서 토큰 즉시 제거
+    window.history.replaceState({}, '', '/auth/callback')
+
     if (!token) { setStatus('error'); onError(); return }
 
     // 토큰 임시 저장 후 /auth/me 호출로 유저 정보 획득

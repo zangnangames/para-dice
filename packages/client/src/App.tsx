@@ -26,6 +26,10 @@ export default function App() {
   const [guestMode, setGuestMode] = useState(false)
   const [currentMatchId, setCurrentMatchId] = useState<string | null>(null)
   const [kickedMsg, setKickedMsg] = useState<string | null>(null)
+  const [isAuthCallback, setIsAuthCallback] = useState(() =>
+    window.location.pathname === '/auth/callback' ||
+    window.location.search.includes('token=')
+  )
 
   // ── 다른 기기/탭 접속으로 강제 종료 처리 ──────────────────
   useEffect(() => {
@@ -61,17 +65,14 @@ export default function App() {
     </div>
   ) : null
 
-  // OAuth 콜백 처리
-  const isAuthCallback =
-    window.location.pathname === '/auth/callback' ||
-    window.location.search.includes('token=')
+  // OAuth 콜백 처리 (URL 기반이 아닌 state 기반으로 관리해 토큰 노출 방지)
   if (isAuthCallback) {
     return (
       <div style={{ height: '100%', background: '#fff', fontFamily: 'system-ui, sans-serif' }}>
         {KickedBanner}
         <AuthCallback
-          onSuccess={() => { setGuestMode(false); setScreen('home') }}
-          onError={() => {}}
+          onSuccess={() => { setIsAuthCallback(false); setGuestMode(false); setScreen('home') }}
+          onError={() => { setIsAuthCallback(false) }}
         />
       </div>
     )
