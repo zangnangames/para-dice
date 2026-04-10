@@ -15,8 +15,8 @@ export function AuthCallback({ onSuccess, onError }: AuthCallbackProps) {
     const params = new URLSearchParams(window.location.search)
     const token = params.get('token')
 
-    // 보안: URL에서 토큰 즉시 제거
-    window.history.replaceState({}, '', '/auth/callback')
+    // 보안: URL에서 토큰 즉시 제거 (경로 자체도 /로 변경)
+    window.history.replaceState({}, '', '/')
 
     if (!token) { setStatus('error'); onError(); return }
 
