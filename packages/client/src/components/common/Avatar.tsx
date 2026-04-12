@@ -18,7 +18,6 @@ function colorFromName(name: string): string {
 export { PALETTE }
 
 interface AvatarProps {
-  avatarUrl?: string | null  // 더 이상 사용하지 않음 (하위 호환용)
   nickname: string
   size?: number
   border?: string

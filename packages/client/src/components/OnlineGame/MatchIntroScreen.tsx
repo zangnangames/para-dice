@@ -126,7 +126,6 @@ function PlayerCard({ player, side, label }: { player: PlayerCard_['player']; si
       {/* 아바타 */}
       <div style={{ position: 'relative' }}>
         <Avatar
-          avatarUrl={player.avatarUrl}
           nickname={player.nickname}
           size={72}
           border={`3px solid ${side === 'left' ? '#3b82f6' : '#ef4444'}`}

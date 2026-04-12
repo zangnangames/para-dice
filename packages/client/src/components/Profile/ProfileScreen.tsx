@@ -111,7 +111,6 @@ export function ProfileScreen({ onBack }: ProfileScreenProps) {
         {/* 아바타 + 이름 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
           <Avatar
-            avatarUrl={user.avatarUrl}
             nickname={user.nickname}
             size={60}
             border="3px solid rgba(255,255,255,0.4)"
@@ -206,7 +205,6 @@ export function ProfileScreen({ onBack }: ProfileScreenProps) {
                 {/* 미리보기 */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                   <Avatar
-                    avatarUrl={user.avatarUrl}
                     nickname={user.nickname}
                     size={56}
                     customColor={pendingColor}

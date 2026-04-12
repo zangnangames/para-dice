@@ -155,7 +155,7 @@ export function HomeScreen({ onDeckEdit, onAiTrain, onRandomMatch, onPrivateMatc
           boxShadow: '0 4px 16px rgba(29,78,216,0.25)',
         }}
       >
-        <Avatar avatarUrl={user?.avatarUrl} nickname={user?.nickname ?? '?'} size={48} customColor={avatarColor} />
+        <Avatar nickname={user?.nickname ?? '?'} size={48} customColor={avatarColor} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 16, fontWeight: 800, color: '#fff', marginBottom: 4 }}>{user?.nickname}</div>
           {stats ? (
