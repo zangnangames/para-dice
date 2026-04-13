@@ -2,9 +2,19 @@ import fp from 'fastify-plugin'
 import oauth2 from '@fastify/oauth2'
 import type { FastifyInstance } from 'fastify'
 import crypto from 'node:crypto'
-import { redis } from './redis.js'
+
+// iOS Safari ITP 대응:
+// 쿠키 대신 HMAC 서명 기반 무상태 state 사용.
+// state = "<nonce>.<hmac-signature>"  형태로 발급하고,
+// 콜백 시 서명 검증만으로 유효성 확인 → Redis·쿠키 불필요.
+
+function sign(nonce: string, secret: string): string {
+  return crypto.createHmac('sha256', secret).update(nonce).digest('hex')
+}
 
 export default fp(async (app: FastifyInstance) => {
+  const secret = process.env.JWT_SECRET ?? 'fallback-secret'
+
   app.register(oauth2, {
     name: 'googleOAuth2',
     scope: ['profile', 'email'],
@@ -17,22 +27,17 @@ export default fp(async (app: FastifyInstance) => {
     },
     startRedirectPath: '/auth/google',
     callbackUri: process.env.GOOGLE_CALLBACK_URI ?? 'http://localhost:3001/auth/google/callback',
-    // iOS Safari ITP가 쿠키 기반 state를 차단하므로 Redis에 직접 저장
-    generateStateFunction: (async (_req: unknown, _reply: unknown) => {
-      const state = crypto.randomBytes(16).toString('hex')
-      await redis.set(`oauth:state:${state}`, '1', 'EX', 600) // 10분 TTL
-      return state
-    }) as unknown as () => string,
-    checkStateFunction: (async (req: unknown, callback: (err?: Error) => void) => {
-      const state = (req as any).query?.state as string | undefined
-      if (!state) { callback(new Error('Missing state')); return }
-      const exists = await redis.get(`oauth:state:${state}`)
-      if (exists) {
-        await redis.del(`oauth:state:${state}`)
-        callback()
-      } else {
-        callback(new Error('Invalid or expired state'))
-      }
-    }) as unknown as (returnedState: string, callback: (err?: Error) => void) => void,
+    generateStateFunction: () => {
+      const nonce = crypto.randomBytes(16).toString('hex')
+      return `${nonce}.${sign(nonce, secret)}`
+    },
+    checkStateFunction: (returnedState: string, callback: (err?: Error) => void) => {
+      const dot = returnedState.lastIndexOf('.')
+      if (dot === -1) { callback(new Error('Invalid state format')); return }
+      const nonce = returnedState.slice(0, dot)
+      const sig   = returnedState.slice(dot + 1)
+      if (sig === sign(nonce, secret)) callback()
+      else callback(new Error('Invalid state signature'))
+    },
   })
 })
