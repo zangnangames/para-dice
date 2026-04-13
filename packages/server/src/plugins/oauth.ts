@@ -27,15 +27,18 @@ export default fp(async (app: FastifyInstance) => {
     },
     startRedirectPath: '/auth/google',
     callbackUri: process.env.GOOGLE_CALLBACK_URI ?? 'http://localhost:3001/auth/google/callback',
-    generateStateFunction: () => {
+    // v7: generateStateFunction(request) → string  /  checkStateFunction(request, callback)
+    generateStateFunction: (_req: unknown) => {
       const nonce = crypto.randomBytes(16).toString('hex')
       return `${nonce}.${sign(nonce, secret)}`
     },
-    checkStateFunction: (returnedState: string, callback: (err?: Error) => void) => {
-      const dot = returnedState.lastIndexOf('.')
+    checkStateFunction: (request: unknown, callback: (err?: Error) => void) => {
+      const state = (request as any).query?.state as string | undefined
+      if (!state) { callback(new Error('Missing state')); return }
+      const dot = state.lastIndexOf('.')
       if (dot === -1) { callback(new Error('Invalid state format')); return }
-      const nonce = returnedState.slice(0, dot)
-      const sig   = returnedState.slice(dot + 1)
+      const nonce = state.slice(0, dot)
+      const sig   = state.slice(dot + 1)
       if (sig === sign(nonce, secret)) callback()
       else callback(new Error('Invalid state signature'))
     },
