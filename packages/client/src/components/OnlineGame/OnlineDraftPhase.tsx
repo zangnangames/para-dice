@@ -11,7 +11,7 @@ const CUBE_TRANSFORMS = [
   `rotateX(-90deg) translateZ(22px)`,
 ]
 
-const TOTAL_SEC = 60
+const TOTAL_SEC = 40
 
 interface OnlineDraftPhaseProps {
   myDice: Die[]

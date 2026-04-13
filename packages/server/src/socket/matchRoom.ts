@@ -12,7 +12,7 @@ import {
 
 // 드래프트 타임아웃 타이머 (프로세스 로컬, Redis 직렬화 불필요)
 const draftTimers = new Map<string, ReturnType<typeof setTimeout>>()
-const DRAFT_TIMEOUT_MS = 60_000
+const DRAFT_TIMEOUT_MS = 40_000
 
 function clearDraftTimer(matchId: string) {
   const t = draftTimers.get(matchId)
@@ -143,7 +143,7 @@ export function registerMatchRoom(io: Server, socket: Socket, userId: string) {
           opponentStats: toStats(statsA),
         })
 
-        // 드래프트 60초 타임아웃 시작
+        // 드래프트 40초 타임아웃 시작
         startDraftTimeout(io, matchId)
       }
     } catch (err) {
