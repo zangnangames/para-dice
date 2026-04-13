@@ -8,8 +8,10 @@ import { HomeScreen } from './components/Home/HomeScreen'
 import { RankingScreen } from './components/Ranking/RankingScreen'
 import { MatchmakingScreen } from './components/Matchmaking/MatchmakingScreen'
 import { OnlineGameScreen } from './components/OnlineGame/OnlineGameScreen'
+import { TutorialOverlay } from './components/Tutorial/TutorialOverlay'
 import { useAuthStore } from './store/authStore'
 import { useDeckStore } from './store/deckStore'
+import { useTutorialStore } from './store/tutorialStore'
 import { socket } from './lib/socket'
 
 type Screen =
@@ -24,7 +26,9 @@ type Screen =
 export default function App() {
   const { isLoggedIn, logout: authLogout } = useAuthStore()
   const resetDeck = useDeckStore(s => s.resetDeck)
+  const { isDone: tutorialDone } = useTutorialStore()
   const [screen, setScreen] = useState<Screen>('home')
+  const [showTutorial, setShowTutorial] = useState(false)
   const [guestMode, setGuestMode] = useState(false)
   const [currentMatchId, setCurrentMatchId] = useState<string | null>(null)
   const [kickedMsg, setKickedMsg] = useState<string | null>(null)
@@ -32,6 +36,13 @@ export default function App() {
     window.location.pathname === '/auth/callback' ||
     window.location.search.includes('token=')
   )
+
+  // ── 첫 로그인 시 튜토리얼 자동 표시 ─────────────────────────
+  useEffect(() => {
+    if (isLoggedIn() && !tutorialDone) {
+      setShowTutorial(true)
+    }
+  }, [isLoggedIn(), tutorialDone])
 
   // ── 다른 기기/탭 접속으로 강제 종료 처리 ──────────────────
   useEffect(() => {
@@ -138,6 +149,14 @@ export default function App() {
       display: 'flex', flexDirection: 'column',
     }}>
       {KickedBanner}
+
+      {/* 튜토리얼 오버레이 */}
+      {showTutorial && (
+        <TutorialOverlay
+          onComplete={() => { setShowTutorial(false); setScreen('deck-edit') }}
+          onSkip={() => setShowTutorial(false)}
+        />
+      )}
       {/* 헤더 */}
       <header style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -203,7 +222,10 @@ export default function App() {
         )}
 
         {screen === 'profile' && loggedIn && (
-          <ProfileScreen onBack={() => setScreen('home')} />
+          <ProfileScreen
+            onBack={() => setScreen('home')}
+            onTutorial={() => { setScreen('home'); setShowTutorial(true) }}
+          />
         )}
 
         {screen === 'ranking' && (

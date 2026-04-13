@@ -1,14 +1,13 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import * as THREE from 'three'
 import * as CANNON from 'cannon-es'
 import type { Die } from '@dice-game/core'
 
 const HALF = 0.5
-const GRAB_Y = 2.2   // 잡았을 때 높이
+const GRAB_Y = 2.2
 const IDLE_Y = 6
 const GRAB_SPIN = 24
 const RESULT_Y = 1.8
-const RESULT_DELAY_MS = 1100
 
 const COLORS = ['#fef9c3', '#dbeafe', '#dcfce7', '#fee2e2', '#ede9fe', '#fed7aa']
 const FI_TO_MAT = [2, 1, 4, 0, 5, 3]
@@ -21,11 +20,6 @@ const FACE_NORMALS_C = [
   new CANNON.Vec3(0, -1, 0),
 ]
 const OPPOSITE_FACE_INDEX = [5, 3, 4, 1, 2, 0] as const
-
-// 각 면(fi)이 위를 향하도록 만드는 스냅 쿼터니언 (axis-angle 공식으로 검증)
-// fi=0: (0,1,0)→up identity / fi=1: (-1,0,0)→up rotateZ(-90°)
-// fi=2: (0,0,1)→up rotateX(-90°) / fi=3: (1,0,0)→up rotateZ(90°)
-// fi=4: (0,0,-1)→up rotateX(90°) / fi=5: (0,-1,0)→up rotateX(180°)
 const SQ2 = Math.SQRT1_2
 const SNAP_QUATS: [number, number, number, number][] = [
   [0, 0, 0, 1],
@@ -35,6 +29,9 @@ const SNAP_QUATS: [number, number, number, number][] = [
   [SQ2, 0, 0, SQ2],
   [1, 0, 0, 0],
 ]
+
+// 결과 공개 단계
+type RevealStage = 'idle' | 'rolling' | 'suspense' | 'revealing' | 'done'
 
 function makeTexture(value: number, color: string): THREE.CanvasTexture {
   const c = document.createElement('canvas')
@@ -65,8 +62,7 @@ function createDieMesh(die: Die): THREE.Mesh {
       metalness: 0.05,
     })
   })
-  const mesh = new THREE.Mesh(geo, mats)
-  return mesh
+  return new THREE.Mesh(geo, mats)
 }
 
 function createDieBody(x: number, z: number): CANNON.Body {
@@ -90,9 +86,7 @@ function readSettledTopFace(body: CANNON.Body, die: Die): number | null {
     const d = body.quaternion.vmult(n).dot(down)
     if (d > best) { best = d; bottomFi = fi }
   })
-  const bodyNearFloor = body.position.y <= HALF + 0.08
-  const faceFlatOnFloor = best >= 0.96
-  if (!bodyNearFloor || !faceFlatOnFloor) return null
+  if (body.position.y > HALF + 0.08 || best < 0.96) return null
   return die.faces[OPPOSITE_FACE_INDEX[bottomFi]]
 }
 
@@ -105,8 +99,37 @@ interface PhysicsDiceProps {
 export function PhysicsDice({ myDie, oppDie, onResult }: PhysicsDiceProps) {
   const mountRef = useRef<HTMLDivElement>(null)
   const [hint, setHint] = useState<'grab' | 'hold' | 'wait' | 'done'>('grab')
-  const [centerValue, setCenterValue] = useState<number | null>(null)
+  const [revealStage, setRevealStage] = useState<RevealStage>('idle')
+  const [displayValue, setDisplayValue] = useState<number | null>(null)
   const resultFired = useRef(false)
+  const pendingResult = useRef<{ my: number; opp: number } | null>(null)
+
+  // 플립 카운터 (? → 숫자 깜빡임용)
+  const [flipCount, setFlipCount] = useState(0)
+
+  // 긴장 → 공개 시퀀스
+  const triggerReveal = useCallback((myVal: number, oppVal: number) => {
+    pendingResult.current = { my: myVal, opp: oppVal }
+    setRevealStage('suspense')
+    setDisplayValue(null)
+
+    // 0.7s suspense → flip 시작
+    setTimeout(() => {
+      setRevealStage('revealing')
+      let count = 0
+      const interval = setInterval(() => {
+        setFlipCount(c => c + 1)
+        count++
+        if (count >= 5) {
+          clearInterval(interval)
+          setDisplayValue(myVal)
+          setRevealStage('done')
+          setHint('done')
+          setTimeout(() => onResult(myVal, oppVal), 600)
+        }
+      }, 80)
+    }, 700)
+  }, [onResult])
 
   useEffect(() => {
     const mount = mountRef.current!
@@ -114,7 +137,6 @@ export function PhysicsDice({ myDie, oppDie, onResult }: PhysicsDiceProps) {
     const H = mount.clientHeight
     const TW = 5, TD = 8.5
 
-    // ── Renderer ─────────────────────────────────────────
     const renderer = new THREE.WebGLRenderer({ antialias: true })
     renderer.setSize(W, H)
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
@@ -123,13 +145,12 @@ export function PhysicsDice({ myDie, oppDie, onResult }: PhysicsDiceProps) {
 
     const scene = new THREE.Scene()
 
-    // ── 탑뷰 오쏘그래픽 카메라 (왜곡 없음) ──────────────
     function makeCamera(w: number, h: number) {
       const a = w / h
       const hH = TD / 2 + 0.4
       const hW = hH * a
       const cam = new THREE.OrthographicCamera(-hW, hW, hH, -hH, 0.1, 100)
-      cam.up.set(0, 0, -1)   // 화면 위 = 월드 -Z (상대방 쪽)
+      cam.up.set(0, 0, -1)
       cam.position.set(0, 30, 0)
       cam.lookAt(0, 0, 0)
       return cam
@@ -137,13 +158,11 @@ export function PhysicsDice({ myDie, oppDie, onResult }: PhysicsDiceProps) {
     const camera = makeCamera(W, H)
     scene.add(camera)
 
-    // ── 조명 ─────────────────────────────────────────────
     scene.add(new THREE.AmbientLight(0xffffff, 1.1))
     const dir = new THREE.DirectionalLight(0xffffff, 1.4)
     dir.position.set(3, 12, 4)
     scene.add(dir)
 
-    // ── 테이블 ────────────────────────────────────────────
     const tableMesh = new THREE.Mesh(
       new THREE.PlaneGeometry(TW, TD),
       new THREE.MeshStandardMaterial({ color: 0xe2e8f2, roughness: 0.92 })
@@ -151,19 +170,16 @@ export function PhysicsDice({ myDie, oppDie, onResult }: PhysicsDiceProps) {
     tableMesh.rotation.x = -Math.PI / 2
     scene.add(tableMesh)
 
-    // 그리드
     const grid = new THREE.GridHelper(Math.max(TW, TD), 10, 0xb8c3d4, 0xb8c3d4)
     grid.position.y = 0.001
     scene.add(grid)
 
-    // 구분선
     const divPts = [new THREE.Vector3(-TW / 2, 0.003, 0), new THREE.Vector3(TW / 2, 0.003, 0)]
     scene.add(new THREE.Line(
       new THREE.BufferGeometry().setFromPoints(divPts),
       new THREE.LineBasicMaterial({ color: 0x7c8fa8, linewidth: 2 })
     ))
 
-    // ── Cannon world ──────────────────────────────────────
     const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -28, 0) })
     world.broadphase = new CANNON.NaiveBroadphase()
     world.allowSleep = true
@@ -189,7 +205,6 @@ export function PhysicsDice({ myDie, oppDie, onResult }: PhysicsDiceProps) {
       world.addBody(b)
     })
 
-    // ── 주사위 생성 ───────────────────────────────────────
     const myBody = createDieBody(0, 0)
     world.addBody(myBody)
     const myMesh = createDieMesh(myDie)
@@ -201,26 +216,37 @@ export function PhysicsDice({ myDie, oppDie, onResult }: PhysicsDiceProps) {
 
     const oppBody = createDieBody(0, -2.8)
     world.addBody(oppBody)
+    const oppMesh = createDieMesh(oppDie)
+    scene.add(oppMesh)
+    oppBody.position.set(
+      (Math.random() - 0.5) * 1.2,
+      IDLE_Y + 1,
+      -TD / 2 + 0.5
+    )
+    oppBody.sleep()
 
-    // 상대 자동 투척
+    // 상대 자동 투척 — 매번 다른 궤적
+    const oppDelay = 300 + Math.random() * 300
     setTimeout(() => {
-      oppBody.velocity.set((Math.random() - 0.5) * 5, 4, 3.5 + Math.random() * 2)
+      const vx = (Math.random() - 0.5) * 6
+      const vz = 3.5 + Math.random() * 3
+      const spin = 18 + Math.random() * 14
+      oppBody.velocity.set(vx, 3 + Math.random() * 2, vz)
       oppBody.angularVelocity.set(
-        (Math.random() - 0.5) * 22, (Math.random() - 0.5) * 22, (Math.random() - 0.5) * 22
+        (Math.random() - 0.5) * spin,
+        (Math.random() - 0.5) * spin,
+        (Math.random() - 0.5) * spin
       )
       oppBody.wakeUp()
-    }, 400)
+    }, oppDelay)
 
-    // ── 인터랙션 ─────────────────────────────────────────
     const raycaster = new THREE.Raycaster()
     const ptr = new THREE.Vector2()
     const grabPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -GRAB_Y)
 
     let grabbed = false
     let myThrown = false
-    const grabPos = new THREE.Vector3()   // 현재 잡은 월드 좌표
-
-    // 던지기 속도 추적
+    const grabPos = new THREE.Vector3()
     type VelSample = { x: number; z: number; t: number }
     const samples: VelSample[] = []
 
@@ -247,8 +273,6 @@ export function PhysicsDice({ myDie, oppDie, onResult }: PhysicsDiceProps) {
       grabbed = true
       mount.setPointerCapture(e.pointerId)
       setHint('hold')
-
-      // 위로 들어올리기
       myBody.velocity.setZero()
       myBody.angularVelocity.set(
         (Math.random() - 0.5) * GRAB_SPIN,
@@ -256,7 +280,6 @@ export function PhysicsDice({ myDie, oppDie, onResult }: PhysicsDiceProps) {
         (Math.random() - 0.5) * GRAB_SPIN
       )
       myBody.wakeUp()
-
       const pt = toWorld(e.clientX, e.clientY)
       if (pt) { grabPos.copy(pt); samples.length = 0 }
     }
@@ -275,8 +298,6 @@ export function PhysicsDice({ myDie, oppDie, onResult }: PhysicsDiceProps) {
     const onUp = () => {
       if (!grabbed) return
       grabbed = false
-
-      // 최근 두 샘플로 속도 계산
       let vx = 0, vz = 0
       if (samples.length >= 2) {
         const a = samples[samples.length - 2]
@@ -291,18 +312,22 @@ export function PhysicsDice({ myDie, oppDie, onResult }: PhysicsDiceProps) {
       if (spd > 0.8) {
         myThrown = true
         setHint('wait')
+        setRevealStage('rolling')
         const cap = 15
+        // 던질 때 각도 다변화: 주축 + 약간의 다른 축 혼합
+        const dominant = 20 + Math.random() * 10
         myBody.velocity.set(
           Math.max(-cap, Math.min(cap, vx)),
-          0,
+          0.5 + Math.random() * 0.5,
           Math.max(-cap, Math.min(cap, vz)),
         )
         myBody.angularVelocity.set(
-          (Math.random() - 0.5) * 24, (Math.random() - 0.5) * 24, (Math.random() - 0.5) * 24
+          (Math.random() - 0.5) * dominant,
+          (Math.random() - 0.5) * dominant * 0.6,
+          (Math.random() - 0.5) * dominant
         )
         myBody.wakeUp()
       } else {
-        // 제자리에서 떨구기
         myBody.velocity.setZero()
         myBody.wakeUp()
         setHint('grab')
@@ -315,18 +340,19 @@ export function PhysicsDice({ myDie, oppDie, onResult }: PhysicsDiceProps) {
     mount.addEventListener('pointerleave', onUp)
     mount.addEventListener('pointercancel', onUp)
 
-    // ── 정착 감지 ─────────────────────────────────────────
     let mySettled = false, oppSettled = false
     let myVal = 0, oppVal = 0
     let myF = 0, oppF = 0
     let resultRevealStart = 0
     const revealTarget = new THREE.Vector3(0, RESULT_Y, 0)
     const settledQuaternion = new THREE.Quaternion()
-
-    // 던진 후 경과 프레임 (타임아웃 강제 정착용)
     let myThrownFrames = 0
 
-    // 현재 가장 위를 향한 면으로 자세를 스냅하고 해당 면의 값을 반환
+    // 착지 후 wobble 상태
+    let wobbleActive = false
+    let wobbleT = 0
+    const WOBBLE_DURATION = 0.45
+
     function forceSettleDie(body: CANNON.Body, die: Die): number {
       const up = new CANNON.Vec3(0, 1, 0)
       let bestDot = -Infinity, topFi = 0
@@ -334,13 +360,11 @@ export function PhysicsDice({ myDie, oppDie, onResult }: PhysicsDiceProps) {
         const d = body.quaternion.vmult(n).dot(up)
         if (d > bestDot) { bestDot = d; topFi = fi }
       })
-      // 바닥 위 안전한 범위로 위치 고정
       body.position.set(
         Math.max(-TW / 2 + HALF + 0.3, Math.min(TW / 2 - HALF - 0.3, body.position.x)),
         HALF + 0.01,
         Math.max(-TD / 2 + HALF + 0.3, Math.min(TD / 2 - HALF - 0.3, body.position.z)),
       )
-      // 90° 단위 랜덤 Y회전 + 면 스냅
       const [qx, qy, qz, qw] = SNAP_QUATS[topFi]
       const snapQ = new CANNON.Quaternion(qx, qy, qz, qw)
       const yRot = new CANNON.Quaternion()
@@ -352,20 +376,15 @@ export function PhysicsDice({ myDie, oppDie, onResult }: PhysicsDiceProps) {
       return die.faces[topFi]
     }
 
-    // ── 애니메이션 루프 ───────────────────────────────────
     const clock = new THREE.Clock()
     let rafId: number
-
-    let spinT = 0
 
     function animate() {
       rafId = requestAnimationFrame(animate)
       const dt = Math.min(clock.getDelta(), 0.05)
-      spinT += dt
 
       world.step(1 / 60, dt, 3)
 
-      // 벽 끼임 보정: 거의 정지 상태인데 바닥에 없으면 중앙 방향으로 밀기
       const pushToCenter = (body: CANNON.Body) => {
         if (body.velocity.lengthSquared() < 0.8 &&
             body.angularVelocity.lengthSquared() < 0.8 &&
@@ -377,25 +396,37 @@ export function PhysicsDice({ myDie, oppDie, onResult }: PhysicsDiceProps) {
       if (myThrown && !mySettled) pushToCenter(myBody)
       if (!oppSettled) pushToCenter(oppBody)
 
-      // 잡은 동안: 위치 강제 고정 + 자연스러운 회전
       if (grabbed) {
         myBody.position.set(grabPos.x, GRAB_Y, grabPos.z)
         myBody.velocity.setZero()
-        myBody.angularVelocity.set(
-          GRAB_SPIN * 0.8,
-          GRAB_SPIN,
-          GRAB_SPIN * 0.9
-        )
+        myBody.angularVelocity.set(GRAB_SPIN * 0.8, GRAB_SPIN, GRAB_SPIN * 0.9)
         myBody.wakeUp()
       }
 
       myMesh.position.copy(myBody.position as unknown as THREE.Vector3)
       myMesh.quaternion.copy(myBody.quaternion as unknown as THREE.Quaternion)
+      oppMesh.position.copy(oppBody.position as unknown as THREE.Vector3)
+      oppMesh.quaternion.copy(oppBody.quaternion as unknown as THREE.Quaternion)
 
+      // 내 주사위 결과 공개 이동 (결과 중앙으로)
       if (resultRevealStart > 0) {
         const revealT = Math.min((performance.now() - resultRevealStart) / 260, 1)
         myMesh.position.lerp(revealTarget, revealT)
         myMesh.quaternion.slerp(settledQuaternion, revealT)
+      }
+
+      // wobble 애니메이션: 착지 직후 미세한 Z축 흔들림
+      if (wobbleActive) {
+        wobbleT += dt
+        const progress = wobbleT / WOBBLE_DURATION
+        if (progress >= 1) {
+          wobbleActive = false
+        } else {
+          const decay = 1 - progress
+          const angle = Math.sin(progress * Math.PI * 5) * 0.08 * decay
+          const wobbleQ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), angle)
+          myMesh.quaternion.multiply(wobbleQ)
+        }
       }
 
       if (!resultFired.current && myThrown) {
@@ -408,6 +439,9 @@ export function PhysicsDice({ myDie, oppDie, onResult }: PhysicsDiceProps) {
           if (topFace !== null) {
             mySettled = true
             myVal = topFace
+            // 착지 wobble 트리거
+            wobbleActive = true
+            wobbleT = 0
           }
         }
 
@@ -421,7 +455,6 @@ export function PhysicsDice({ myDie, oppDie, onResult }: PhysicsDiceProps) {
           }
         }
 
-        // 타임아웃 강제 정착: 4초(~240프레임) 이상 미해결 시 가장 가까운 면으로 스냅
         if (!mySettled && myThrownFrames > 240) {
           myVal = forceSettleDie(myBody, myDie)
           mySettled = true
@@ -431,13 +464,12 @@ export function PhysicsDice({ myDie, oppDie, onResult }: PhysicsDiceProps) {
           oppSettled = true
         }
 
-        if (mySettled && oppSettled) {
+        if (mySettled && oppSettled && !resultFired.current) {
           resultFired.current = true
-          setHint('done')
           resultRevealStart = performance.now()
           settledQuaternion.copy(myMesh.quaternion)
-          setCenterValue(myVal)
-          setTimeout(() => onResult(myVal, oppVal), RESULT_DELAY_MS)
+          // triggerReveal은 React 외부에서 직접 호출할 수 없으므로 이벤트로 전달
+          mount.dispatchEvent(new CustomEvent('diceSettled', { detail: { myVal, oppVal } }))
         }
       }
 
@@ -445,7 +477,13 @@ export function PhysicsDice({ myDie, oppDie, onResult }: PhysicsDiceProps) {
     }
     animate()
 
-    // ── 리사이즈 ──────────────────────────────────────────
+    // 정착 이벤트 수신
+    const onSettled = (e: Event) => {
+      const { myVal, oppVal } = (e as CustomEvent).detail
+      triggerReveal(myVal, oppVal)
+    }
+    mount.addEventListener('diceSettled', onSettled)
+
     const ro = new ResizeObserver(() => {
       const w = mount.clientWidth, h = mount.clientHeight
       const a = w / h
@@ -465,24 +503,33 @@ export function PhysicsDice({ myDie, oppDie, onResult }: PhysicsDiceProps) {
       mount.removeEventListener('pointerup', onUp)
       mount.removeEventListener('pointerleave', onUp)
       mount.removeEventListener('pointercancel', onUp)
+      mount.removeEventListener('diceSettled', onSettled)
       ro.disconnect()
       renderer.dispose()
       if (mount.contains(renderer.domElement)) mount.removeChild(renderer.domElement)
     }
   }, [])  // eslint-disable-line react-hooks/exhaustive-deps
 
-  const hintText = {
+  const hintText: Record<string, string> = {
     grab: '주사위를 잡고 던지세요',
     hold: '드래그해서 던지세요',
     wait: '...',
     done: '',
   }
 
+  // 뱃지에 표시할 값 계산
+  const badgeContent = (() => {
+    if (revealStage === 'idle' || revealStage === 'rolling') return null
+    if (revealStage === 'suspense') return '?'
+    if (revealStage === 'revealing') return flipCount % 2 === 0 ? '?' : (displayValue ?? '?')
+    return displayValue
+  })()
+
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <div ref={mountRef} style={{ position: 'fixed', inset: 0, touchAction: 'none', zIndex: 0 }} />
 
-      {hint !== 'done' && (
+      {hint !== 'done' && revealStage !== 'suspense' && revealStage !== 'revealing' && (
         <div style={{
           position: 'fixed', bottom: 48, left: '50%', transform: 'translateX(-50%)',
           background: 'rgba(0,0,0,0.55)', color: '#fff',
@@ -491,7 +538,19 @@ export function PhysicsDice({ myDie, oppDie, onResult }: PhysicsDiceProps) {
         }}>{hintText[hint]}</div>
       )}
 
-      {centerValue !== null && (
+      {/* suspense 메시지 */}
+      {revealStage === 'suspense' && (
+        <div style={{
+          position: 'fixed', bottom: 48, left: '50%', transform: 'translateX(-50%)',
+          background: 'rgba(0,0,0,0.7)', color: '#fbbf24',
+          padding: '6px 18px', borderRadius: 20, fontSize: 14, fontWeight: 700,
+          pointerEvents: 'none', whiteSpace: 'nowrap', zIndex: 1,
+          animation: 'suspensePulse 0.35s ease-in-out infinite alternate',
+        }}>결과 공개 중...</div>
+      )}
+
+      {/* 결과 뱃지 */}
+      {badgeContent !== null && (
         <div style={{
           position: 'fixed',
           top: '50%',
@@ -501,22 +560,39 @@ export function PhysicsDice({ myDie, oppDie, onResult }: PhysicsDiceProps) {
           height: 72,
           padding: '0 20px',
           borderRadius: 24,
-          background: 'rgba(255,255,255,0.95)',
-          border: '1px solid rgba(37,99,235,0.15)',
+          background: revealStage === 'done'
+            ? 'rgba(255,255,255,0.97)'
+            : 'rgba(30,30,30,0.88)',
+          border: revealStage === 'done'
+            ? '2px solid rgba(37,99,235,0.3)'
+            : '2px solid rgba(251,191,36,0.6)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           fontSize: 34,
           fontWeight: 900,
-          color: '#1d4ed8',
+          color: revealStage === 'done' ? '#1d4ed8' : '#fbbf24',
           pointerEvents: 'none',
           zIndex: 3,
           backdropFilter: 'blur(8px)',
+          transition: 'background 0.3s, color 0.3s, border-color 0.3s',
+          animation: revealStage === 'done' ? 'badgePop 0.3s cubic-bezier(0.34,1.56,0.64,1)' : 'none',
         }}>
-          {centerValue}
+          {badgeContent}
         </div>
       )}
 
+      <style>{`
+        @keyframes suspensePulse {
+          from { opacity: 0.7; transform: translateX(-50%) scale(0.97); }
+          to   { opacity: 1;   transform: translateX(-50%) scale(1.03); }
+        }
+        @keyframes badgePop {
+          0%   { transform: translate(-50%, -150%) scale(0.7); }
+          60%  { transform: translate(-50%, -150%) scale(1.12); }
+          100% { transform: translate(-50%, -150%) scale(1); }
+        }
+      `}</style>
     </div>
   )
 }

@@ -3,6 +3,7 @@ import { useAuthStore } from '@/store/authStore'
 import { api } from '@/lib/api'
 import { Avatar, PALETTE } from '@/components/common/Avatar'
 import { useProfileStore } from '@/store/profileStore'
+import { useTutorialStore } from '@/store/tutorialStore'
 
 const FACE_COLORS = ['#fef9c3', '#dbeafe', '#dcfce7', '#fee2e2', '#ede9fe', '#fed7aa']
 
@@ -28,11 +29,13 @@ interface MatchRecord {
 
 interface ProfileScreenProps {
   onBack: () => void
+  onTutorial?: () => void
 }
 
-export function ProfileScreen({ onBack }: ProfileScreenProps) {
+export function ProfileScreen({ onBack, onTutorial }: ProfileScreenProps) {
   const { user, updateUser } = useAuthStore()
   const { avatarColor, setAvatarColor } = useProfileStore()
+  const { replayTutorial } = useTutorialStore()
   const [tab, setTab] = useState<Tab>('profile')
   const [stats, setStats] = useState<Stats | null>(null)
   const [matches, setMatches] = useState<MatchRecord[]>([])
@@ -295,6 +298,23 @@ export function ProfileScreen({ onBack }: ProfileScreenProps) {
             <Section icon="🏅" title="뱃지">
               <ComingSoon label="게임 달성 보상 뱃지 시스템" />
             </Section>
+
+            {/* 튜토리얼 다시 보기 */}
+            <button
+              onClick={() => { replayTutorial(); onTutorial?.() }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                width: '100%', padding: '13px 16px', borderRadius: 12,
+                background: '#fff', border: '1.5px solid #e2e8f0',
+                cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
+              }}
+            >
+              <span style={{ fontSize: 18 }}>📖</span>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: '#1e293b' }}>튜토리얼 다시 보기</div>
+                <div style={{ fontSize: 12, color: '#94a3b8' }}>게임 규칙·조작법 안내</div>
+              </div>
+            </button>
 
           </div>
         )}

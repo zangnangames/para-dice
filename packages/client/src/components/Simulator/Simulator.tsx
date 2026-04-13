@@ -6,6 +6,7 @@ import { generateAiDeck } from '@/simulator/aiDeck'
 import { DraftPhase } from './DraftPhase'
 import { RoundPhase } from './RoundPhase'
 import { ResultScreen } from './ResultScreen'
+import { VictoryOverlay } from './VictoryOverlay'
 
 type Phase = 'draft' | 'round' | 'result'
 
@@ -20,6 +21,7 @@ export function Simulator({ onBack }: SimulatorProps) {
   const [orderedIds, setOrderedIds] = useState<[string, string, string] | null>(null)
   const [gameState, setGameState] = useState<GameState>(createInitialGameState())
   const [roundWinners, setRoundWinners] = useState<Array<'me' | 'opp'>>([])
+  const [showVictory, setShowVictory] = useState(false)
 
   const handleDraftConfirm = (ids: [string, string, string]) => {
     setOrderedIds(ids)
@@ -31,7 +33,7 @@ export function Simulator({ onBack }: SimulatorProps) {
     setGameState(next)
     setRoundWinners(prev => [...prev, winner])
     if (next.finished) {
-      setPhase('result')
+      setShowVictory(true)
     }
   }
 
@@ -40,13 +42,14 @@ export function Simulator({ onBack }: SimulatorProps) {
     setOrderedIds(null)
     setGameState(createInitialGameState())
     setRoundWinners([])
+    setShowVictory(false)
   }
 
   if (phase === 'draft') {
     return (
       <div>
         <button onClick={onBack} style={{ margin: 16, background: 'none', border: 'none', cursor: 'pointer', color: '#2563eb' }}>
-          ← 덱 빌더로 돌아가기
+          ← 홈으로
         </button>
         <DraftPhase myDice={[...deck.dice]} aiDice={[...aiDeck.dice]} onConfirm={handleDraftConfirm} />
       </div>
@@ -67,6 +70,13 @@ export function Simulator({ onBack }: SimulatorProps) {
           roundWinners={roundWinners}
           onRoundEnd={handleRoundEnd}
         />
+        {/* 2선승 달성 시 승리 연출 오버레이 */}
+        {showVictory && gameState.winner && (
+          <VictoryOverlay
+            winner={gameState.winner}
+            onDone={() => { setShowVictory(false); setPhase('result') }}
+          />
+        )}
       </div>
     )
   }
@@ -78,6 +88,7 @@ export function Simulator({ onBack }: SimulatorProps) {
         myWins={gameState.myWins}
         oppWins={gameState.oppWins}
         onRestart={handleRestart}
+        onHome={onBack}
       />
     )
   }
