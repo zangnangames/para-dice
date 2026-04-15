@@ -50,6 +50,18 @@ export function MatchmakingScreen({ onMatched, onCancel }: MatchmakingScreenProp
     onCancel()
   }
 
+  // #5 fix: 오류 발생 시 재시도
+  const handleRetry = () => {
+    setErrorMsg('')
+    setElapsed(0)
+    setStatus('connecting')
+    socket.emit('queue:join')
+    socket.once('queue:joined', () => {
+      setStatus('waiting')
+      timerRef.current = setInterval(() => setElapsed(e => e + 1), 1000)
+    })
+  }
+
   const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 
   return (
@@ -137,6 +149,16 @@ export function MatchmakingScreen({ onMatched, onCancel }: MatchmakingScreenProp
 
       {status === 'error' && (
         <div style={{ display: 'flex', gap: 10 }}>
+          {/* #5 fix: 오류 시 재시도 버튼 추가 */}
+          <button
+            onClick={handleRetry}
+            style={{
+              padding: '12px 24px', borderRadius: 12,
+              border: 'none', background: '#2563eb',
+              fontSize: 14, fontWeight: 700, color: '#fff',
+              cursor: 'pointer', fontFamily: 'inherit',
+            }}
+          >다시 시도</button>
           <button
             onClick={handleCancel}
             style={{
