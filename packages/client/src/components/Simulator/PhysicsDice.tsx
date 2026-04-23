@@ -9,12 +9,6 @@ const IDLE_Y = 6
 const GRAB_SPIN = 24
 const RESULT_Y = 1.8
 
-// 충돌 그룹: 내 주사위 / 상대 주사위 / 환경(벽·바닥·분리벽)은 서로 다른 그룹
-// 내 주사위 ↔ 상대 주사위 충돌을 막고 각자 환경하고만 충돌
-const GRP_MY  = 1
-const GRP_OPP = 2
-const GRP_ENV = 4
-
 const COLORS = ['#fef9c3', '#dbeafe', '#dcfce7', '#fee2e2', '#ede9fe', '#fed7aa']
 const FI_TO_MAT = [2, 1, 4, 0, 5, 3]
 const FACE_NORMALS_C = [
@@ -195,8 +189,6 @@ export function PhysicsDice({ myDie, oppDie, onResult }: PhysicsDiceProps) {
     const ground = new CANNON.Body({ mass: 0, material: phyMat })
     ground.addShape(new CANNON.Plane())
     ground.quaternion.setFromEuler(-Math.PI / 2, 0, 0)
-    ground.collisionFilterGroup = GRP_ENV
-    ground.collisionFilterMask  = GRP_MY | GRP_OPP | GRP_ENV
     world.addBody(ground)
 
     const wallDefs: [number, number, number, number, number, number][] = [
@@ -210,50 +202,34 @@ export function PhysicsDice({ myDie, oppDie, onResult }: PhysicsDiceProps) {
       b.addShape(new CANNON.Plane())
       b.position.set(px, py, pz)
       b.quaternion.setFromEuler(ex, ey, ez)
-      b.collisionFilterGroup = GRP_ENV
-      b.collisionFilterMask  = GRP_MY | GRP_OPP | GRP_ENV
       world.addBody(b)
     })
 
-    // 중앙 분리벽: z=0 에 얇은 박스. 내 주사위가 상대 영역으로 넘어가지 않도록
-    const dividerBody = new CANNON.Body({ mass: 0, material: phyMat })
-    dividerBody.addShape(new CANNON.Box(new CANNON.Vec3(TW / 2 + 0.1, 2, 0.04)))
-    dividerBody.position.set(0, 1, 0)
-    dividerBody.collisionFilterGroup = GRP_ENV
-    dividerBody.collisionFilterMask  = GRP_MY | GRP_OPP | GRP_ENV
-    world.addBody(dividerBody)
-
-    // 내 주사위: 내 영역(z > 0, 화면 하단)
-    const myBody = createDieBody(0, TD / 4)
-    myBody.collisionFilterGroup = GRP_MY
-    myBody.collisionFilterMask  = GRP_ENV   // 환경하고만 충돌, 상대 주사위 통과
+    const myBody = createDieBody(0, 0)
     world.addBody(myBody)
     const myMesh = createDieMesh(myDie)
     scene.add(myMesh)
-    myBody.position.set(0, IDLE_Y, TD / 4)  // z > 0 (내 영역)
+    myBody.position.set(0, IDLE_Y, 0)
     myBody.velocity.setZero()
     myBody.angularVelocity.setZero()
     myBody.sleep()
 
-    // 상대 주사위: 상대 영역(z < 0, 화면 상단)
-    const oppBody = createDieBody(0, -TD / 4)
-    oppBody.collisionFilterGroup = GRP_OPP
-    oppBody.collisionFilterMask  = GRP_ENV   // 환경하고만 충돌, 내 주사위 통과
+    const oppBody = createDieBody(0, -2.8)
     world.addBody(oppBody)
     const oppMesh = createDieMesh(oppDie)
     scene.add(oppMesh)
     oppBody.position.set(
       (Math.random() - 0.5) * 1.2,
       IDLE_Y + 1,
-      -TD / 2 + 0.5   // 상대 영역 끝에서 시작
+      -TD / 2 + 0.5
     )
     oppBody.sleep()
 
-    // 상대 자동 투척 — 상대 영역(z < 0) 안에서 굴림
+    // 상대 자동 투척 — 매번 다른 궤적
     const oppDelay = 300 + Math.random() * 300
     setTimeout(() => {
-      const vx  = (Math.random() - 0.5) * 6
-      const vz  = 3.5 + Math.random() * 3   // +Z 방향 → 중앙 분리벽에 튕김
+      const vx = (Math.random() - 0.5) * 6
+      const vz = 3.5 + Math.random() * 3
       const spin = 18 + Math.random() * 14
       oppBody.velocity.set(vx, 3 + Math.random() * 2, vz)
       oppBody.angularVelocity.set(
@@ -313,8 +289,7 @@ export function PhysicsDice({ myDie, oppDie, onResult }: PhysicsDiceProps) {
       const pt = toWorld(e.clientX, e.clientY)
       if (!pt) return
       pt.x = Math.max(-TW / 2 + HALF, Math.min(TW / 2 - HALF, pt.x))
-      // 내 영역(z > 0)으로만 드래그 허용 — 분리벽(z=0) 너머로 못 넘어감
-      pt.z = Math.max(HALF + 0.1, Math.min(TD / 2 - HALF, pt.z))
+      pt.z = Math.max(-TD / 2 + HALF, Math.min(TD / 2 - HALF, pt.z))
       grabPos.copy(pt)
       samples.push({ x: pt.x, z: pt.z, t: performance.now() })
       if (samples.length > 8) samples.shift()
@@ -378,7 +353,7 @@ export function PhysicsDice({ myDie, oppDie, onResult }: PhysicsDiceProps) {
     let wobbleT = 0
     const WOBBLE_DURATION = 0.45
 
-    function forceSettleDie(body: CANNON.Body, die: Die, zMin: number, zMax: number): number {
+    function forceSettleDie(body: CANNON.Body, die: Die): number {
       const up = new CANNON.Vec3(0, 1, 0)
       let bestDot = -Infinity, topFi = 0
       FACE_NORMALS_C.forEach((n, fi) => {
@@ -388,7 +363,7 @@ export function PhysicsDice({ myDie, oppDie, onResult }: PhysicsDiceProps) {
       body.position.set(
         Math.max(-TW / 2 + HALF + 0.3, Math.min(TW / 2 - HALF - 0.3, body.position.x)),
         HALF + 0.01,
-        Math.max(zMin, Math.min(zMax, body.position.z)),
+        Math.max(-TD / 2 + HALF + 0.3, Math.min(TD / 2 - HALF - 0.3, body.position.z)),
       )
       const [qx, qy, qz, qw] = SNAP_QUATS[topFi]
       const snapQ = new CANNON.Quaternion(qx, qy, qz, qw)
@@ -401,12 +376,6 @@ export function PhysicsDice({ myDie, oppDie, onResult }: PhysicsDiceProps) {
       return die.faces[topFi]
     }
 
-    // 각 영역의 Z 범위 상수
-    const MY_Z_MIN  = HALF + 0.3
-    const MY_Z_MAX  = TD / 2 - HALF - 0.3
-    const OPP_Z_MIN = -TD / 2 + HALF + 0.3
-    const OPP_Z_MAX = -(HALF + 0.3)
-
     const clock = new THREE.Clock()
     let rafId: number
 
@@ -416,17 +385,16 @@ export function PhysicsDice({ myDie, oppDie, onResult }: PhysicsDiceProps) {
 
       world.step(1 / 60, dt, 3)
 
-      // 낙하 중 공중에 떠 있으면 각 영역 중심으로 유도
-      const pushToHalfCenter = (body: CANNON.Body, targetZ: number) => {
+      const pushToCenter = (body: CANNON.Body) => {
         if (body.velocity.lengthSquared() < 0.8 &&
             body.angularVelocity.lengthSquared() < 0.8 &&
             body.position.y > HALF + 0.25) {
-          body.velocity.set(-body.position.x * 2, -3, -(body.position.z - targetZ) * 2)
+          body.velocity.set(-body.position.x * 2, -3, -body.position.z * 2)
           body.wakeUp()
         }
       }
-      if (myThrown && !mySettled) pushToHalfCenter(myBody,  TD / 4)   // 내 절반 중심
-      if (!oppSettled)            pushToHalfCenter(oppBody, -TD / 4)  // 상대 절반 중심
+      if (myThrown && !mySettled) pushToCenter(myBody)
+      if (!oppSettled) pushToCenter(oppBody)
 
       if (grabbed) {
         myBody.position.set(grabPos.x, GRAB_Y, grabPos.z)
@@ -488,11 +456,11 @@ export function PhysicsDice({ myDie, oppDie, onResult }: PhysicsDiceProps) {
         }
 
         if (!mySettled && myThrownFrames > 240) {
-          myVal = forceSettleDie(myBody, myDie, MY_Z_MIN, MY_Z_MAX)
+          myVal = forceSettleDie(myBody, myDie)
           mySettled = true
         }
         if (!oppSettled && myThrownFrames > 240) {
-          oppVal = forceSettleDie(oppBody, oppDie, OPP_Z_MIN, OPP_Z_MAX)
+          oppVal = forceSettleDie(oppBody, oppDie)
           oppSettled = true
         }
 
