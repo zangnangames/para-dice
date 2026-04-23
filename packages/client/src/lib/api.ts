@@ -1,3 +1,5 @@
+import { useAuthStore } from '@/store/authStore'
+
 const SERVER_URL = import.meta.env.VITE_SERVER_URL ?? 'http://localhost:3001'
 
 function getToken(): string | null {
@@ -21,6 +23,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   })
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }))
+    if (res.status === 401) {
+      useAuthStore.getState().logout()
+      localStorage.removeItem('dice-auth')
+    }
     throw new Error(err.error ?? `HTTP ${res.status}`)
   }
   return res.json()

@@ -1,9 +1,8 @@
 import type { FastifyPluginAsync } from 'fastify'
+import { getTempDeckRankings } from '../lib/tempDeckRankings.js'
 import { prisma } from '../plugins/db.js'
 
 export const statsRoutes: FastifyPluginAsync = async (app) => {
-  app.addHook('onRequest', app.authenticate)
-
   // 계정 통계 (승/패/연승)
   app.get<{ Params: { userId: string } }>('/users/:userId/stats', async (req) => {
     const stats = await prisma.userStats.findUnique({
@@ -95,8 +94,7 @@ export const statsRoutes: FastifyPluginAsync = async (app) => {
       take: 20,
     })
 
-    return stats.map((s, rank) => ({
-      rank: rank + 1,
+    const liveRankings = stats.map((s) => ({
       deckId: s.deckId,
       deckName: s.deck.name,
       ownerNickname: s.deck.user.nickname,
@@ -106,12 +104,23 @@ export const statsRoutes: FastifyPluginAsync = async (app) => {
       losses: s.losses,
       winRate: Math.round((s.wins / s.totalGames) * 1000) / 10,
     }))
+
+    const tempRankings = getTempDeckRankings().filter(
+      temp => !liveRankings.some(live => live.deckId === temp.deckId),
+    )
+
+    return [...liveRankings, ...tempRankings]
+      .slice(0, 20)
+      .map((entry, rank) => ({
+        rank: rank + 1,
+        ...entry,
+      }))
   })
 
   // AI 대전 결과 기록 (로컬 시뮬레이터용)
   app.post<{
     Body: { deckId: string; result: 'win' | 'lose' }
-  }>('/ai-match', async (req, reply) => {
+  }>('/ai-match', { onRequest: [app.authenticate] }, async (req, reply) => {
     const { userId } = req.user as { userId: string }
     const { deckId, result } = req.body
 

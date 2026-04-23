@@ -9,7 +9,7 @@ interface RoundIntroProps {
   onStart: () => void
 }
 
-function DieFaceChips({ die, highlight }: { die: Die; highlight?: boolean }) {
+function DieFaceChips({ die, highlight }: { die: Die; highlight: boolean | undefined }) {
   const sorted = [...die.faces].sort((a, b) => b - a)
   return (
     <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', justifyContent: 'center' }}>
@@ -34,7 +34,7 @@ function DieCard({
 }: {
   die: Die
   label: string
-  highlight?: boolean
+  highlight: boolean | undefined
 }) {
   return (
     <div style={{
@@ -119,7 +119,7 @@ export function RoundIntro({ round, myDie, oppDie, myName = '나', oppName = '�
           VS
         </div>
 
-        <DieCard die={oppDie} label={oppName} />
+        <DieCard die={oppDie} label={oppName} highlight={undefined} />
       </div>
 
       {/* 굴리기 버튼 */}
