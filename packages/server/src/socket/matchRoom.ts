@@ -95,15 +95,7 @@ export function registerMatchRoom(io: Server, socket: Socket, userId: string) {
           room.players[playerIdx] = player
           await setRoom(matchId, room)
 
-          const oppPlayer = isPlayerA ? match.playerB : match.playerA
-          const myDeck   = isPlayerA ? match.deckA : match.deckB
-          const oppDeck  = isPlayerA ? match.deckB : match.deckA
-          socket.emit('room:restore', {
-            ...getRestoreSnapshot(room, playerIdx as 0 | 1),
-            opponent:    { nickname: oppPlayer.nickname, avatarUrl: oppPlayer.avatarUrl ?? null },
-            myDeck,
-            opponentDeck: oppDeck,
-          })
+          socket.emit('room:restore', getRestoreSnapshot(room, playerIdx as 0 | 1))
 
           const opp = room.players[1 - playerIdx]
           if (opp && opp.socketId !== socket.id) {

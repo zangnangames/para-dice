@@ -36,8 +36,6 @@ export function OnlineGameScreen({ matchId, onExit, onRematch }: OnlineGameScree
   const { user } = useAuthStore()
 
   const [phase, setPhase] = useState<Phase>('joining')
-  // game:over 딜레이 처리를 위해 현재 phase를 ref로도 추적
-  const phaseRef = useRef<Phase>('joining')
   const [opponent, setOpponent] = useState<Opponent | null>(null)
   const [myStats, setMyStats] = useState<{ totalWins: number; totalLosses: number; currentStreak: number } | null>(null)
   const [opponentStats, setOpponentStats] = useState<{ totalWins: number; totalLosses: number; currentStreak: number } | null>(null)
@@ -60,10 +58,6 @@ export function OnlineGameScreen({ matchId, onExit, onRematch }: OnlineGameScree
   const [opponentDisconnected, setOpponentDisconnected] = useState(false)
   const [isForfeitWin, setIsForfeitWin] = useState(false)
   const draftTimerRef = useRef<ReturnType<typeof setInterval> | null>(null) // 미사용, 하위 호환
-  const gameOverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  // phaseRef 동기화 (game:over 딜레이 판단에 사용)
-  useEffect(() => { phaseRef.current = phase }, [phase])
 
   // ── 소켓 이벤트 등록 ─────────────────────────────────────
   useEffect(() => {
@@ -90,18 +84,10 @@ export function OnlineGameScreen({ matchId, onExit, onRematch }: OnlineGameScree
       opponentReady,
       hasRolled: restoredHasRolled,
       opponentRolled: restoredOpponentRolled,
-      // #4 fix: 재접속 시 상대 정보 + 덱 복원
-      opponent: restoredOpponent,
-      myDeck: restoredMyDeck,
-      opponentDeck: restoredOppDeck,
     }) => {
       if (gs) setGameState(gs)
       if (mp) setMyPick(mp)
       if (op) setOppPick(op)
-      // #4 fix: 재접속 시 opponent/deck 상태 복원
-      if (restoredOpponent) setOpponent(restoredOpponent)
-      if (restoredMyDeck) setMyDeck(restoredMyDeck.dice ?? restoredMyDeck)
-      if (restoredOppDeck) setOppDeck(restoredOppDeck.dice ?? restoredOppDeck)
       setRoundWinners(restoredRoundWinners ?? [])
       setLastRolls(restoredLastRolls ?? [])
       setLastWinner(restoredLastWinner ?? null)
@@ -163,20 +149,9 @@ export function OnlineGameScreen({ matchId, onExit, onRematch }: OnlineGameScree
 
     socket.on('game:over', ({ winnerUserId, forfeit }: { winnerUserId: string; forfeit?: boolean }) => {
       const iWon = winnerUserId === user?.userId
-      const winner: 'me' | 'opp' = iWon ? 'me' : 'opp'
-      setLastWinner(winner)
+      setLastWinner(iWon ? 'me' : 'opp')
       if (forfeit) setIsForfeitWin(true)
-
-      // #1 fix: gameState.winner를 명시적으로 업데이트 (forfeit 등으로 round:result 없이 종료될 때도 정확히 반영)
-      setGameState(prev => ({ ...prev, finished: true, winner }))
-
-      // #2 fix: round-result 화면 표시 중이면 유저가 마지막 라운드 결과를 볼 수 있도록 딜레이 후 전환
-      if (phaseRef.current === 'round-result') {
-        if (gameOverTimerRef.current) clearTimeout(gameOverTimerRef.current)
-        gameOverTimerRef.current = setTimeout(() => setPhase('game-over'), 2200)
-      } else {
-        setPhase('game-over')
-      }
+      setPhase('game-over')
     })
 
     socket.on('opponent:disconnected', () => {
@@ -219,7 +194,6 @@ export function OnlineGameScreen({ matchId, onExit, onRematch }: OnlineGameScree
       socket.off('rematch:declined')
       socket.off('rematch:matched')
       stopDraftTimer()
-      if (gameOverTimerRef.current) clearTimeout(gameOverTimerRef.current)
     }
   }, [matchId, user?.userId])
 
@@ -591,11 +565,7 @@ export function OnlineGameScreen({ matchId, onExit, onRematch }: OnlineGameScree
               {/* 하단: game-over 버튼 or 다음 라운드 뱃지 */}
               {gameState.finished ? (
                 <button
-                  onClick={() => {
-                    // #2 fix: 수동 탭 시 딜레이 타이머 취소 후 즉시 전환
-                    if (gameOverTimerRef.current) clearTimeout(gameOverTimerRef.current)
-                    setPhase('game-over')
-                  }}
+                  onClick={() => setPhase('game-over')}
                   style={{
                     width: '100%', padding: '13px 0', fontSize: 15, fontWeight: 700,
                     borderRadius: 12, border: 'none', cursor: 'pointer',
