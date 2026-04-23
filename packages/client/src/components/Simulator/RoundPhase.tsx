@@ -1,12 +1,10 @@
 import { useState, useEffect } from 'react'
 import type { Die, RollResult } from '@dice-game/core'
 import { PhysicsDice } from './PhysicsDice'
-import { RoundIntro } from './RoundIntro'
 
 interface RoundPhaseProps {
   myDie: Die
   oppDie: Die
-  roundIndex: number           // 0-based 라운드 인덱스 (표시용 round = roundIndex+1)
   roundWinners: Array<'me' | 'opp'>
   onRoundEnd: (rolls: RollResult[], winner: 'me' | 'opp') => void
 }
@@ -14,8 +12,7 @@ interface RoundPhaseProps {
 // 결과 수신 후 화면 플래시 색상
 type FlashType = 'win' | 'lose' | 'draw' | null
 
-export function RoundPhase({ myDie, oppDie, roundIndex, roundWinners, onRoundEnd }: RoundPhaseProps) {
-  const [stage, setStage] = useState<'intro' | 'rolling'>('intro')
+export function RoundPhase({ myDie, oppDie, roundWinners, onRoundEnd }: RoundPhaseProps) {
   const [rolls, setRolls] = useState<RollResult[]>([])
   const [winner, setWinner] = useState<'me' | 'opp' | null>(null)
   const [isDraw, setIsDraw] = useState(false)
@@ -62,7 +59,6 @@ export function RoundPhase({ myDie, oppDie, roundIndex, roundWinners, onRoundEnd
     setMyFaceValue(null)
     setOppFaceValue(null)
     setResultVisible(false)
-    // 동점 재대결은 인트로 없이 바로 재굴림
     setRollAttempt(a => a + 1)
   }
 
@@ -73,18 +69,6 @@ export function RoundPhase({ myDie, oppDie, roundIndex, roundWinners, onRoundEnd
     win:  'rgba(34,197,94,0.25)',
     lose: 'rgba(239,68,68,0.22)',
     draw: 'rgba(234,179,8,0.22)',
-  }
-
-  // 인트로 화면
-  if (stage === 'intro') {
-    return (
-      <RoundIntro
-        round={roundIndex + 1}
-        myDie={myDie}
-        oppDie={oppDie}
-        onStart={() => setStage('rolling')}
-      />
-    )
   }
 
   return (

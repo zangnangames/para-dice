@@ -4,7 +4,6 @@ import { useAuthStore } from '@/store/authStore'
 import { createInitialGameState } from '@dice-game/core'
 import type { Die, GameState, RollResult } from '@dice-game/core'
 import { PhysicsDice } from '../Simulator/PhysicsDice'
-import { RoundIntro } from '../Simulator/RoundIntro'
 import { MatchIntroScreen } from './MatchIntroScreen'
 import { OnlineDraftPhase } from './OnlineDraftPhase'
 import { OnlineResultScreen } from './OnlineResultScreen'
@@ -57,7 +56,6 @@ export function OnlineGameScreen({ matchId, onExit, onRematch }: OnlineGameScree
   const [hasRolled, setHasRolled] = useState(false)
   const [showNextRound, setShowNextRound] = useState(false)
   const [showReroll, setShowReroll] = useState(false)
-  const [roundIntroShown, setRoundIntroShown] = useState(false) // 라운드 시작 인트로 완료 여부
   const [rematchStatus, setRematchStatus] = useState<RematchStatus>('idle')
   const [opponentDisconnected, setOpponentDisconnected] = useState(false)
   const [isForfeitWin, setIsForfeitWin] = useState(false)
@@ -112,8 +110,6 @@ export function OnlineGameScreen({ matchId, onExit, onRematch }: OnlineGameScree
       setHasRolled(!!restoredHasRolled)
       setOpponentRolled(!!restoredOpponentRolled)
       setOpponentDisconnected(false)
-      // 재접속 시 이미 진행 중인 라운드면 인트로 건너뜀
-      setRoundIntroShown(true)
       setPhase(restoredPhase ?? 'round')
     })
 
@@ -123,7 +119,6 @@ export function OnlineGameScreen({ matchId, onExit, onRematch }: OnlineGameScree
       setOppPick(op)
       setOpponentSealed(false)
       setOpponentDisconnected(false)
-      setRoundIntroShown(false) // 첫 라운드 인트로 표시
       setPhase('round')
       setCurrentRound(1)
     })
@@ -278,7 +273,6 @@ export function OnlineGameScreen({ matchId, onExit, onRematch }: OnlineGameScree
   const handleNextRound = () => {
     const nextRound = currentRound + 1
     setCurrentRound(nextRound)
-    setRoundIntroShown(false) // 다음 라운드 인트로 표시
     setLastRolls([])
     setLastWinner(null)
     setRollAttempt(a => a + 1)
@@ -381,20 +375,6 @@ export function OnlineGameScreen({ matchId, onExit, onRematch }: OnlineGameScree
           </div>
         )}
       </div>
-    )
-  }
-
-  // ── 라운드 시작 인트로 ──────────────────────────────────────
-  if (phase === 'round' && !roundIntroShown && myDie && oppDie) {
-    return (
-      <RoundIntro
-        round={currentRound}
-        myDie={myDie}
-        oppDie={oppDie}
-        myName="나"
-        oppName={opponent?.nickname ?? '상대'}
-        onStart={() => setRoundIntroShown(true)}
-      />
     )
   }
 

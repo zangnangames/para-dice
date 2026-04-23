@@ -67,7 +67,6 @@ export function Simulator({ onBack }: SimulatorProps) {
           key={roundIndex}
           myDie={myDie}
           oppDie={oppDie}
-          roundIndex={roundIndex}
           roundWinners={roundWinners}
           onRoundEnd={handleRoundEnd}
         />
