@@ -43,6 +43,12 @@ function normalizePickInput(input: string[] | string[][], mode: GameMode): strin
   }) as string[][]
 }
 
+function normalizeRoundValuesInput(input: number | number[] | null | undefined): number[] {
+  if (Array.isArray(input)) return [...input]
+  if (typeof input === 'number') return [input]
+  return []
+}
+
 function clearDraftTimer(matchId: string) {
   const t = draftTimers.get(matchId)
   if (t) { clearTimeout(t); draftTimers.delete(matchId) }
@@ -185,7 +191,11 @@ export function registerMatchRoom(io: Server, socket: Socket, userId: string) {
   })
 
   // ── draft:pick ────────────────────────────────────────────
-  socket.on('draft:pick', async ({ matchId, rounds }: { matchId: string; rounds: string[] | string[][] }) => {
+  socket.on('draft:pick', async ({ matchId, rounds, diceIds }: {
+    matchId: string
+    rounds?: string[] | string[][]
+    diceIds?: string[]
+  }) => {
     try {
       const room = await getRoom(matchId)
       if (!room) return
@@ -193,7 +203,9 @@ export function registerMatchRoom(io: Server, socket: Socket, userId: string) {
       const playerIdx = room.players.findIndex(p => p?.socketId === socket.id)
       if (playerIdx === -1) return
 
-      room.picks[playerIdx] = normalizePickInput(rounds, room.mode)
+      const rawPick = rounds ?? diceIds
+      if (!rawPick) return
+      room.picks[playerIdx] = normalizePickInput(rawPick, room.mode)
       await setRoom(matchId, room)
 
       // 상대방에게 "상대가 봉인 완료" 알림
@@ -213,7 +225,12 @@ export function registerMatchRoom(io: Server, socket: Socket, userId: string) {
 
   // ── round:roll ────────────────────────────────────────────
   // 클라이언트가 주사위를 던진 뒤 호출. 양쪽 모두 던지면 서버가 결과 결정.
-  socket.on('round:roll', async ({ matchId, round, values }: { matchId: string; round: number; values: number[] }) => {
+  socket.on('round:roll', async ({ matchId, round, values, value }: {
+    matchId: string
+    round: number
+    values?: number[]
+    value?: number
+  }) => {
     try {
       const room = await getRoom(matchId)
       if (!room || !room.picks[0] || !room.picks[1]) return
@@ -230,19 +247,20 @@ export function registerMatchRoom(io: Server, socket: Socket, userId: string) {
         .map((dieId) => room.decks[playerIdx].dice.find((d: Die) => d.id === dieId))
         .filter(Boolean) as Die[]
       if (myDice.length !== roundDieIds.length) return
-      if (values.length !== myDice.length) {
+      const normalizedValues = normalizeRoundValuesInput(values ?? value)
+      if (normalizedValues.length !== myDice.length) {
         socket.emit('error', { message: '현재 라운드 주사위 수와 제출 값 수가 맞지 않습니다' })
         return
       }
       for (const [index, die] of myDice.entries()) {
-        if (!die.faces.includes(values[index])) {
+        if (!die.faces.includes(normalizedValues[index])) {
           socket.emit('error', { message: '유효하지 않은 주사위 눈입니다' })
           return
         }
       }
 
       room.roundReady[playerIdx] = true
-      room.roundValues[playerIdx] = values
+      room.roundValues[playerIdx] = normalizedValues
       await setRoom(matchId, room)
 
       // 상대방에게 "상대가 던짐" 알림
