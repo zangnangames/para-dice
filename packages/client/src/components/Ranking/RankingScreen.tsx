@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { encodeDeckCode } from '@dice-game/core'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/store/authStore'
 
@@ -277,6 +278,7 @@ function MyDeckCard({ deck }: { deck: MyDeck }) {
 
 function RankCard({ entry }: { entry: RankEntry }) {
   const [expanded, setExpanded] = useState(false)
+  const [copied, setCopied] = useState(false)
 
   const medalColor =
     entry.rank === 1 ? '#f59e0b' :
@@ -286,6 +288,27 @@ function RankCard({ entry }: { entry: RankEntry }) {
   const winRateColor =
     entry.winRate >= 60 ? '#16a34a' :
     entry.winRate >= 50 ? '#2563eb' : '#dc2626'
+
+  const handleCopyDeckCode = async () => {
+    const code = encodeDeckCode({
+      id: entry.deckId,
+      name: entry.deckName,
+      dice: [...entry.dice]
+        .sort((a, b) => a.order - b.order)
+        .map((die) => ({
+          id: die.id,
+          faces: [...die.faces] as [number, number, number, number, number, number],
+        })) as [
+          { id: string; faces: [number, number, number, number, number, number] },
+          { id: string; faces: [number, number, number, number, number, number] },
+          { id: string; faces: [number, number, number, number, number, number] },
+          { id: string; faces: [number, number, number, number, number, number] },
+        ],
+    })
+    await navigator.clipboard.writeText(code)
+    setCopied(true)
+    window.setTimeout(() => setCopied(false), 1800)
+  }
 
   return (
     <div style={{
@@ -360,6 +383,24 @@ function RankCard({ entry }: { entry: RankEntry }) {
         <div style={{
           borderTop: '1px solid #f8fafc', padding: '14px 16px', background: '#fafafa',
         }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+            <button
+              onClick={handleCopyDeckCode}
+              style={{
+                padding: '8px 12px',
+                borderRadius: 10,
+                border: `1.5px solid ${copied ? '#86efac' : '#bfdbfe'}`,
+                background: copied ? '#f0fdf4' : '#eff6ff',
+                color: copied ? '#15803d' : '#1d4ed8',
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+              }}
+            >
+              {copied ? '덱 코드 복사됨' : '덱 코드 복사'}
+            </button>
+          </div>
           <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             주사위 구성
           </div>
