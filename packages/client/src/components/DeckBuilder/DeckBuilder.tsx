@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { decodeDeckCode, encodeDeckCode } from '@dice-game/core'
 import { useDeckStore } from '@/store/deckStore'
 import { useAuthStore } from '@/store/authStore'
 import { api } from '@/lib/api'
@@ -9,12 +10,14 @@ interface DeckBuilderProps {
 }
 
 export function DeckBuilder({ onDone }: DeckBuilderProps) {
-  const { deck, isValid, updateFace, setName, serverId, setServerId } = useDeckStore()
+  const { deck, isValid, updateFace, replaceDeckFaces, setName, serverId, setServerId } = useDeckStore()
   const { isLoggedIn } = useAuthStore()
   const loggedIn = isLoggedIn()
 
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [deckCodeInput, setDeckCodeInput] = useState('')
+  const [deckCodeMessage, setDeckCodeMessage] = useState('')
 
   const handleSave = async () => {
     if (!isValid) return
@@ -65,6 +68,28 @@ export function DeckBuilder({ onDone }: DeckBuilderProps) {
     ? serverId ? '덱 업데이트 완료' : '덱 저장 완료'
     : '확인 (게스트 — 저장 안됨)'
 
+  const handleCopyDeckCode = async () => {
+    try {
+      const code = encodeDeckCode(deck)
+      await navigator.clipboard.writeText(code)
+      setDeckCodeInput(code)
+      setDeckCodeMessage('덱 코드를 복사했습니다')
+    } catch (e: any) {
+      setDeckCodeMessage(e.message ?? '덱 코드를 만들 수 없습니다')
+    }
+  }
+
+  const handleApplyDeckCode = () => {
+    try {
+      const diceFaces = decodeDeckCode(deckCodeInput)
+      replaceDeckFaces(diceFaces)
+      setDeckCodeMessage('덱 코드가 현재 덱에 적용되었습니다')
+      setError('')
+    } catch (e: any) {
+      setDeckCodeMessage(e.message ?? '덱 코드를 적용할 수 없습니다')
+    }
+  }
+
   return (
     <div style={{ maxWidth: 720, margin: '0 auto', padding: 24 }}>
       <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 4 }}>덱 빌더</h1>
@@ -112,6 +137,80 @@ export function DeckBuilder({ onDone }: DeckBuilderProps) {
             onFaceChange={(fi, v) => updateFace(i, fi, v)}
           />
         ))}
+      </div>
+
+      <div style={{
+        marginBottom: 24,
+        padding: '16px 16px 14px',
+        borderRadius: 14,
+        background: '#fff',
+        border: '1.5px solid #e2e8f0',
+      }}>
+        <div style={{ fontSize: 14, fontWeight: 800, color: '#1e293b', marginBottom: 6 }}>
+          덱 코드 복사 / 적용
+        </div>
+        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 12 }}>
+          24칸의 주사위 눈을 base-22 큰 정수 문자열로 변환합니다. 숫자열만 붙여넣으면 현재 덱에 바로 반영됩니다.
+        </div>
+        <textarea
+          value={deckCodeInput}
+          onChange={e => { setDeckCodeInput(e.target.value); setDeckCodeMessage('') }}
+          placeholder="덱 코드를 붙여넣으세요"
+          rows={3}
+          style={{
+            width: '100%',
+            padding: '12px 14px',
+            fontSize: 13,
+            lineHeight: 1.5,
+            borderRadius: 10,
+            border: '1.5px solid #e2e8f0',
+            outline: 'none',
+            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+            color: '#0f172a',
+            boxSizing: 'border-box',
+            resize: 'vertical',
+            marginBottom: 10,
+          }}
+        />
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <button
+            onClick={handleCopyDeckCode}
+            disabled={!isValid}
+            style={{
+              padding: '11px 0',
+              borderRadius: 10,
+              border: '1.5px solid #bfdbfe',
+              background: isValid ? '#eff6ff' : '#f1f5f9',
+              color: isValid ? '#1d4ed8' : '#94a3b8',
+              cursor: isValid ? 'pointer' : 'not-allowed',
+              fontWeight: 700,
+              fontFamily: 'inherit',
+            }}
+          >
+            덱 코드 복사
+          </button>
+          <button
+            onClick={handleApplyDeckCode}
+            disabled={!deckCodeInput.trim()}
+            style={{
+              padding: '11px 0',
+              borderRadius: 10,
+              border: 'none',
+              background: deckCodeInput.trim() ? '#0f172a' : '#e2e8f0',
+              color: deckCodeInput.trim() ? '#fff' : '#94a3b8',
+              cursor: deckCodeInput.trim() ? 'pointer' : 'not-allowed',
+              fontWeight: 700,
+              fontFamily: 'inherit',
+            }}
+          >
+            코드 적용
+          </button>
+        </div>
+        {deckCodeMessage && (
+          <div style={{ marginTop: 10, fontSize: 12, color: '#475569' }}>
+            {deckCodeMessage}
+          </div>
+        )}
       </div>
 
       {error && (

@@ -8,6 +8,7 @@ interface DeckStore {
   serverId: string | null   // 서버에 저장된 덱 ID (없으면 null)
   isValid: boolean
   updateFace: (dieIndex: number, faceIndex: number, value: number) => void
+  replaceDeckFaces: (diceFaces: Die['faces'][]) => void
   setName: (name: string) => void
   setServerId: (id: string | null) => void
   resetDeck: () => void
@@ -35,6 +36,16 @@ export const useDeckStore = create<DeckStore>()(
           dice[dieIndex].faces[faceIndex] = value
           const deck = { ...state.deck, dice }
           return { deck, isValid: validateDeck(deck).valid }
+        }),
+
+      replaceDeckFaces: (diceFaces) =>
+        set(state => {
+          const dice = state.deck.dice.map((die, index) => ({
+            ...die,
+            faces: diceFaces[index] ?? die.faces,
+          })) as Deck['dice']
+          const deck = { ...state.deck, dice }
+          return { deck, serverId: null, isValid: validateDeck(deck).valid }
         }),
 
       setName: (name) =>

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { validateDie, validateDeck, validateDraftPick } from './validator'
 import { resolveRound, applyRoundResult, createInitialGameState } from './engine'
+import { decodeDeckCode, encodeDeckCode } from './deckCode'
 import type { Die, Deck } from './types'
 
 const die = (faces: [number,number,number,number,number,number], id = 'd1'): Die =>
@@ -78,5 +79,18 @@ describe('applyRoundResult', () => {
     s = applyRoundResult(s, [], 'me')
     s = applyRoundResult(s, [], 'opp')
     expect(s.finished).toBe(false)
+  })
+})
+
+describe('deckCode', () => {
+  it('덱 코드는 인코딩 후 디코딩 시 동일한 면 배열을 복원한다', () => {
+    const deck = validDeck()
+    const code = encodeDeckCode(deck)
+    const decoded = decodeDeckCode(code)
+    expect(decoded).toEqual(deck.dice.map(die => die.faces))
+  })
+
+  it('숫자 외 문자가 들어가면 실패한다', () => {
+    expect(() => decodeDeckCode('12ab34')).toThrow()
   })
 })
