@@ -33,6 +33,22 @@ interface OnlineGameScreenProps {
   onRematch: (newMatchId: string) => void
 }
 
+function normalizePick(pick: string[] | string[][] | null | undefined, mode: GameMode): string[][] | null {
+  if (!pick) return null
+  if (Array.isArray(pick[0])) {
+    return (pick as string[][]).map(round => [...round])
+  }
+
+  const flat = pick as string[]
+  const sizes = mode === 'double-battle' ? [1, 1, 2] : [1, 1, 1]
+  let cursor = 0
+  return sizes.map((size) => {
+    const round = flat.slice(cursor, cursor + size)
+    cursor += size
+    return round
+  })
+}
+
 export function OnlineGameScreen({ matchId, mode: initialMode, onExit, onRematch }: OnlineGameScreenProps) {
   const { user } = useAuthStore()
 
@@ -89,10 +105,11 @@ export function OnlineGameScreen({ matchId, mode: initialMode, onExit, onRematch
       hasRolled: restoredHasRolled,
       opponentRolled: restoredOpponentRolled,
     }) => {
+      const effectiveMode = restoredMode ?? mode
       if (restoredMode) setMode(restoredMode)
       if (gs) setGameState(gs)
-      if (mp) setMyPick(mp)
-      if (op) setOppPick(op)
+      if (mp) setMyPick(normalizePick(mp, effectiveMode))
+      if (op) setOppPick(normalizePick(op, effectiveMode))
       setRoundWinners(restoredRoundWinners ?? [])
       setLastRolls(restoredLastRolls ?? [])
       setLastWinner(restoredLastWinner ?? null)
@@ -106,8 +123,8 @@ export function OnlineGameScreen({ matchId, mode: initialMode, onExit, onRematch
 
     socket.on('draft:done', ({ myPick: mp, oppPick: op }) => {
       stopDraftTimer()
-      setMyPick(mp)
-      setOppPick(op)
+      setMyPick(normalizePick(mp, mode))
+      setOppPick(normalizePick(op, mode))
       setOpponentSealed(false)
       setOpponentDisconnected(false)
       setPhase('round')
@@ -232,6 +249,7 @@ export function OnlineGameScreen({ matchId, mode: initialMode, onExit, onRematch
   const handleDraftConfirm = (rounds: string[][]) => {
     socket.emit('draft:pick', { matchId, rounds })
     setMyPick(rounds)
+    setPhase('waiting-opponent-draft')
     // phase는 OnlineDraftPhase 내부에서 봉인 완료 UI로 전환
     // draft:done 수신 시 'round'로 전환됨
   }
@@ -279,10 +297,10 @@ export function OnlineGameScreen({ matchId, mode: initialMode, onExit, onRematch
   // ── 현재 라운드의 주사위 ──────────────────────────────────
   const roundIdx = currentRound - 1
   const myDice = myPick && myDeck.length > 0
-    ? myPick[roundIdx].map(id => myDeck.find(d => d.id === id) ?? myDeck[0]).filter(Boolean)
+    ? (myPick[roundIdx] ?? []).map(id => myDeck.find(d => d.id === id) ?? myDeck[0]).filter(Boolean)
     : null
   const oppDice = oppPick && oppDeck.length > 0
-    ? oppPick[roundIdx].map(id => oppDeck.find(d => d.id === id) ?? oppDeck[0]).filter(Boolean)
+    ? (oppPick[roundIdx] ?? []).map(id => oppDeck.find(d => d.id === id) ?? oppDeck[0]).filter(Boolean)
     : null
 
   // ─────────────────────────────────────────────────────────
@@ -749,6 +767,10 @@ export function OnlineGameScreen({ matchId, mode: initialMode, onExit, onRematch
         `}</style>
       </div>
     )
+  }
+
+  if (phase === 'round' || phase === 'waiting-opponent-roll' || phase === 'round-result' || phase === 'round-draw') {
+    return <FullCenter><LoadingSpinner text="라운드 준비 중..." /></FullCenter>
   }
 
   if (phase === 'game-over') {

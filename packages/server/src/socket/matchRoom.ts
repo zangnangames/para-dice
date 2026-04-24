@@ -28,6 +28,21 @@ function getAutoPick(dice: Die[], mode: GameMode): string[][] {
   }) as string[][]
 }
 
+function normalizePickInput(input: string[] | string[][], mode: GameMode): string[][] {
+  const sizes = getRoundSlotSizes(mode)
+  if (Array.isArray(input[0])) {
+    return (input as string[][]).map(round => [...round])
+  }
+
+  const flat = input as string[]
+  let cursor = 0
+  return sizes.map((size) => {
+    const round = flat.slice(cursor, cursor + size)
+    cursor += size
+    return round
+  }) as string[][]
+}
+
 function clearDraftTimer(matchId: string) {
   const t = draftTimers.get(matchId)
   if (t) { clearTimeout(t); draftTimers.delete(matchId) }
@@ -170,7 +185,7 @@ export function registerMatchRoom(io: Server, socket: Socket, userId: string) {
   })
 
   // ── draft:pick ────────────────────────────────────────────
-  socket.on('draft:pick', async ({ matchId, rounds }: { matchId: string; rounds: string[][] }) => {
+  socket.on('draft:pick', async ({ matchId, rounds }: { matchId: string; rounds: string[] | string[][] }) => {
     try {
       const room = await getRoom(matchId)
       if (!room) return
@@ -178,7 +193,7 @@ export function registerMatchRoom(io: Server, socket: Socket, userId: string) {
       const playerIdx = room.players.findIndex(p => p?.socketId === socket.id)
       if (playerIdx === -1) return
 
-      room.picks[playerIdx] = rounds
+      room.picks[playerIdx] = normalizePickInput(rounds, room.mode)
       await setRoom(matchId, room)
 
       // 상대방에게 "상대가 봉인 완료" 알림
