@@ -4,7 +4,7 @@
  */
 import { redis } from '../plugins/redis.js'
 import { createInitialGameState } from '@dice-game/core'
-import type { GameState, RollResult } from '@dice-game/core'
+import type { GameMode, GameState, RollResult } from '@dice-game/core'
 
 const ROOM_TTL = 60 * 60 // 1시간
 
@@ -17,13 +17,14 @@ export interface RoomPlayer {
 
 export interface RoomState {
   matchId: string
+  mode: GameMode
   players: [RoomPlayer | null, RoomPlayer | null]
   decks: [any, any]
-  picks: [string[] | null, string[] | null]
+  picks: [string[][] | null, string[][] | null]
   gameState: GameState
   roundHistory: Array<{ number: number; winnerId: string; rolls: RollResult[] }>
   currentRoundRolls: RollResult[]
-  roundValues: [number | null, number | null]
+  roundValues: [number[] | null, number[] | null]
   roundReady: [boolean, boolean]   // 각 플레이어가 현재 라운드 주사위를 던졌는지
 }
 
@@ -49,13 +50,14 @@ export async function deleteRoom(matchId: string): Promise<void> {
   ])
 }
 
-export function createRoom(matchId: string, deckA: any, deckB: any): RoomState {
+export function createRoom(matchId: string, deckA: any, deckB: any, mode: GameMode): RoomState {
   return {
     matchId,
+    mode,
     players: [null, null],
     decks: [deckA, deckB],
     picks: [null, null],
-    gameState: createInitialGameState(),
+    gameState: createInitialGameState(mode),
     roundHistory: [],
     currentRoundRolls: [],
     roundValues: [null, null],
@@ -126,6 +128,7 @@ const rematchReqKey   = (matchId: string, idx: 0 | 1) => `rematch:${matchId}:req
 export interface RematchInfo {
   players: [RoomPlayer, RoomPlayer]
   deckIds:  [string, string]
+  mode: GameMode
 }
 
 /** 게임 종료 시 재대결 컨텍스트 저장 */
@@ -133,10 +136,11 @@ export async function setRematchInfo(
   matchId: string,
   players: [RoomPlayer, RoomPlayer],
   deckIds: [string, string],
+  mode: GameMode,
 ): Promise<void> {
   await redis.set(
     rematchInfoKey(matchId),
-    JSON.stringify({ players, deckIds }),
+    JSON.stringify({ players, deckIds, mode }),
     'EX',
     REMATCH_TTL,
   )

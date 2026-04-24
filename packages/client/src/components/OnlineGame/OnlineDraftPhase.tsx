@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
-import type { Die } from '@dice-game/core'
+import { getRoundSlotSizes } from '@dice-game/core'
+import type { Die, GameMode } from '@dice-game/core'
 
 const COLORS = ['#fef9c3', '#dbeafe', '#dcfce7', '#fee2e2', '#ede9fe', '#fed7aa']
 const CUBE_TRANSFORMS = [
@@ -14,19 +15,22 @@ const CUBE_TRANSFORMS = [
 const TOTAL_SEC = 40
 
 interface OnlineDraftPhaseProps {
+  mode: GameMode
   myDice: Die[]
   opponentDice: Die[]
   opponentNickname: string
   opponentReady: boolean   // 상대가 이미 준비 완료했는지
-  initialSelectedIds?: [string, string, string] | null
-  onConfirm: (orderedIds: [string, string, string]) => void
+  initialSelectedIds?: string[][] | null
+  onConfirm: (rounds: string[][]) => void
   onTimeout: () => void
 }
 
 export function OnlineDraftPhase({
-  myDice, opponentDice, opponentNickname, opponentReady, initialSelectedIds, onConfirm, onTimeout,
+  mode, myDice, opponentDice, opponentNickname, opponentReady, initialSelectedIds, onConfirm, onTimeout,
 }: OnlineDraftPhaseProps) {
-  const [selected, setSelected] = useState<string[]>(() => initialSelectedIds ? [...initialSelectedIds] : [])
+  const slotSizes = getRoundSlotSizes(mode)
+  const totalPickCount = slotSizes.reduce((sum, size) => sum + size, 0)
+  const [selected, setSelected] = useState<string[]>(() => initialSelectedIds ? initialSelectedIds.flat() : [])
   const [timeLeft, setTimeLeft] = useState(TOTAL_SEC)
   const [timedOut, setTimedOut] = useState(false)
   const [confirmed, setConfirmed] = useState(() => !!initialSelectedIds)
@@ -53,15 +57,19 @@ export function OnlineDraftPhase({
     if (confirmed || timedOut) return
     setSelected(prev =>
       prev.includes(id) ? prev.filter(x => x !== id)
-        : prev.length < 3 ? [...prev, id] : prev
+        : prev.length < totalPickCount ? [...prev, id] : prev
     )
   }
 
   const handleConfirm = () => {
-    if (selected.length !== 3 || confirmed) return
+    if (selected.length !== totalPickCount || confirmed) return
     clearInterval(intervalRef.current!)
     setConfirmed(true)
-    onConfirm(selected as [string, string, string])
+    onConfirm(slotSizes.reduce<string[][]>((acc, size) => {
+      const used = acc.flat().length
+      acc.push(selected.slice(used, used + size))
+      return acc
+    }, []))
   }
 
   const isLow = timeLeft <= 10 && !confirmed && !timedOut
@@ -117,6 +125,9 @@ export function OnlineDraftPhase({
         }}>
           {timedOut ? '시간 초과 — 자동 선택됨' : confirmed ? '준비 완료!' : `⏱ ${timeLeft}초`}
         </div>
+        <div style={{ textAlign: 'center', fontSize: 11, color: '#64748b', marginBottom: 8 }}>
+          {mode === 'double-battle' ? '1R 1개 · 2R 1개 · 3R 2개' : '1R 1개 · 2R 1개 · 3R 1개'}
+        </div>
 
         <style>{`@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }`}</style>
       </div>
@@ -127,10 +138,11 @@ export function OnlineDraftPhase({
         {/* 준비 완료 대기 화면 */}
         {(confirmed || timedOut) ? (
           <SealedWaiting
-            selectedDice={timedOut ? myDice.slice(0, 3) : selectedDice}
+            selectedDice={timedOut ? myDice.slice(0, totalPickCount) : selectedDice}
             opponentNickname={opponentNickname}
             opponentReady={opponentReady}
             timedOut={timedOut}
+            slotSizes={slotSizes}
           />
         ) : (
           <>
@@ -171,8 +183,8 @@ export function OnlineDraftPhase({
                 <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   내 덱 — 출전 순서 선택
                 </div>
-                <div style={{ fontSize: 11, color: selected.length === 3 ? '#16a34a' : '#94a3b8', fontWeight: 600 }}>
-                  {selected.length} / 3
+                <div style={{ fontSize: 11, color: selected.length === totalPickCount ? '#16a34a' : '#94a3b8', fontWeight: 600 }}>
+                  {selected.length} / {totalPickCount}
                 </div>
               </div>
 
@@ -223,17 +235,17 @@ export function OnlineDraftPhase({
 
             <button
               onClick={handleConfirm}
-              disabled={selected.length !== 3}
+              disabled={selected.length !== totalPickCount}
               style={{
                 width: '100%', padding: '14px 0', fontSize: 16, fontWeight: 700,
                 borderRadius: 12, border: 'none', fontFamily: 'inherit',
-                cursor: selected.length === 3 ? 'pointer' : 'not-allowed',
-                background: selected.length === 3 ? '#2563eb' : '#e2e8f0',
-                color: selected.length === 3 ? '#fff' : '#94a3b8',
+                cursor: selected.length === totalPickCount ? 'pointer' : 'not-allowed',
+                background: selected.length === totalPickCount ? '#2563eb' : '#e2e8f0',
+                color: selected.length === totalPickCount ? '#fff' : '#94a3b8',
                 transition: 'background 0.15s',
               }}
             >
-              {selected.length === 3 ? '준비 완료' : `${3 - selected.length}개 더 선택하세요`}
+              {selected.length === totalPickCount ? '준비 완료' : `${totalPickCount - selected.length}개 더 선택하세요`}
             </button>
           </>
         )}
@@ -244,11 +256,12 @@ export function OnlineDraftPhase({
 
 // ── 준비 완료 대기 화면 ──────────────────────────────────────
 
-function SealedWaiting({ selectedDice, opponentNickname, opponentReady, timedOut }: {
+function SealedWaiting({ selectedDice, opponentNickname, opponentReady, timedOut, slotSizes }: {
   selectedDice: Die[]
   opponentNickname: string
   opponentReady: boolean
   timedOut: boolean
+  slotSizes: readonly number[]
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20, paddingTop: 8 }}>
@@ -258,7 +271,7 @@ function SealedWaiting({ selectedDice, opponentNickname, opponentReady, timedOut
           {timedOut ? '자동 준비 완료' : '준비 완료'}
         </div>
         {timedOut && (
-          <div style={{ fontSize: 12, color: '#94a3b8' }}>시간 초과로 첫 3개가 자동 선택되었습니다</div>
+          <div style={{ fontSize: 12, color: '#94a3b8' }}>시간 초과로 앞 순서부터 자동 선택되었습니다</div>
         )}
       </div>
 
@@ -268,7 +281,9 @@ function SealedWaiting({ selectedDice, opponentNickname, opponentReady, timedOut
           출전 순서
         </div>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
-          {selectedDice.map((die, i) => (
+          {selectedDice.map((die, i) => {
+            const roundNumber = slotSizes[0] > i ? 1 : slotSizes[0] + slotSizes[1] > i ? 2 : 3
+            return (
             <div key={die?.id ?? i} style={{
               display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
               padding: '10px 8px', borderRadius: 12,
@@ -280,7 +295,7 @@ function SealedWaiting({ selectedDice, opponentNickname, opponentReady, timedOut
                 background: '#2563eb', color: '#fff',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: 12, fontWeight: 800,
-              }}>{i + 1}</div>
+              }}>{roundNumber}</div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 16px)', gap: 2 }}>
                 {die && [...die.faces].sort((a, b) => b - a).map((f, fi) => (
                   <span key={fi} style={{
@@ -291,7 +306,7 @@ function SealedWaiting({ selectedDice, opponentNickname, opponentReady, timedOut
                 ))}
               </div>
             </div>
-          ))}
+          )})}
         </div>
       </div>
 

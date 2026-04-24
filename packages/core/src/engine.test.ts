@@ -35,16 +35,20 @@ describe('validateDeck', () => {
 
 describe('validateDraftPick', () => {
   it('유효한 픽 → 통과', () => {
-    const r = validateDraftPick({ diceIds: ['a', 'b', 'c'] }, validDeck())
+    const r = validateDraftPick({ rounds: [['a'], ['b'], ['c']] }, validDeck())
     expect(r.valid).toBe(true)
   })
   it('덱에 없는 id → 실패', () => {
-    const r = validateDraftPick({ diceIds: ['a', 'b', 'z'] }, validDeck())
+    const r = validateDraftPick({ rounds: [['a'], ['b'], ['z']] }, validDeck())
     expect(r.valid).toBe(false)
   })
   it('중복 선택 → 실패', () => {
-    const r = validateDraftPick({ diceIds: ['a', 'a', 'b'] }, validDeck())
+    const r = validateDraftPick({ rounds: [['a'], ['a'], ['b']] }, validDeck())
     expect(r.valid).toBe(false)
+  })
+  it('더블 배틀은 마지막 라운드에 2개 선택', () => {
+    const r = validateDraftPick({ rounds: [['a'], ['b'], ['c', 'd']] }, validDeck(), 'double-battle')
+    expect(r.valid).toBe(true)
   })
 })
 
@@ -52,25 +56,25 @@ describe('validateDraftPick', () => {
 
 describe('resolveRound', () => {
   it('winner 는 항상 me | opp', () => {
-    const { winner } = resolveRound(die([6,6,6,1,1,1]), die([4,4,4,3,3,3]))
+    const { winner } = resolveRound([die([6,6,6,1,1,1])], [die([4,4,4,3,3,3])])
     expect(['me', 'opp']).toContain(winner)
   })
   it('rolls 는 최소 1개 이상', () => {
-    const { rolls } = resolveRound(die([3,3,3,3,3,6]), die([3,3,3,3,3,6]))
+    const { rolls } = resolveRound([die([3,3,3,3,3,6])], [die([3,3,3,3,3,6])])
     expect(rolls.length).toBeGreaterThanOrEqual(1)
   })
 })
 
 describe('applyRoundResult', () => {
   it('2선승 → 게임 종료', () => {
-    let s = createInitialGameState()
+    let s = createInitialGameState('classic')
     s = applyRoundResult(s, [], 'me')
     s = applyRoundResult(s, [], 'me')
     expect(s.finished).toBe(true)
     expect(s.winner).toBe('me')
   })
   it('1승 1패 → 게임 계속', () => {
-    let s = createInitialGameState()
+    let s = createInitialGameState('classic')
     s = applyRoundResult(s, [], 'me')
     s = applyRoundResult(s, [], 'opp')
     expect(s.finished).toBe(false)

@@ -1,0 +1,6 @@
+-- CreateEnum
+CREATE TYPE "GameMode" AS ENUM ('CLASSIC', 'DOUBLE_BATTLE');
+
+-- AlterTable
+ALTER TABLE "Match"
+ADD COLUMN "mode" "GameMode" NOT NULL DEFAULT 'CLASSIC';

@@ -13,8 +13,12 @@ export interface Deck {
 
 // ─── 드래프트 ──────────────────────────────────────────────────
 
+export type GameMode = 'classic' | 'double-battle'
+
+export type DraftRoundSlot = [string] | [string, string]
+
 export interface DraftPick {
-  diceIds: [string, string, string] // 인덱스 = 출전 순서
+  rounds: [DraftRoundSlot, DraftRoundSlot, DraftRoundSlot]
 }
 
 // ─── 라운드 결과 ───────────────────────────────────────────────
@@ -22,6 +26,8 @@ export interface DraftPick {
 export type RoundResult = 'win' | 'lose' | 'draw'
 
 export interface RollResult {
+  myRolls: number[]
+  oppRolls: number[]
   myRoll: number
   oppRoll: number
   result: RoundResult
@@ -30,6 +36,7 @@ export interface RollResult {
 // ─── 게임 상태 ─────────────────────────────────────────────────
 
 export interface GameState {
+  mode: GameMode
   round: number           // 1 | 2 | 3
   myWins: number
   oppWins: number

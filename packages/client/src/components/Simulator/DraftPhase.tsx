@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
-import type { Die } from '@dice-game/core'
+import { getRoundSlotSizes } from '@dice-game/core'
+import type { Die, GameMode } from '@dice-game/core'
 
 // ── 미니 자동회전 큐브 ─────────────────────────────────────────
 const S = 44
@@ -75,28 +76,53 @@ function RotatingCube({ faces }: { faces: Die['faces'] }) {
 interface DraftPhaseProps {
   myDice: Die[]
   aiDice: Die[]
-  onConfirm: (orderedIds: [string, string, string]) => void
+  mode: GameMode
+  onConfirm: (rounds: string[][]) => void
 }
 
-export function DraftPhase({ myDice, aiDice, onConfirm }: DraftPhaseProps) {
+export function DraftPhase({ myDice, aiDice, mode, onConfirm }: DraftPhaseProps) {
   const [selected, setSelected] = useState<string[]>([])
+  const slotSizes = getRoundSlotSizes(mode)
+  const totalPickCount = slotSizes.reduce((sum, size) => sum + size, 0)
 
   const toggle = (id: string) => {
     setSelected(prev =>
       prev.includes(id)
         ? prev.filter(x => x !== id)
-        : prev.length < 3 ? [...prev, id] : prev
+        : prev.length < totalPickCount ? [...prev, id] : prev
     )
   }
 
-  const canConfirm = selected.length === 3
+  const canConfirm = selected.length === totalPickCount
+  const rounds = slotSizes.reduce<string[][]>((acc, size) => {
+    const used = acc.flat().length
+    acc.push(selected.slice(used, used + size))
+    return acc
+  }, [])
 
   return (
     <div style={{ maxWidth: 560, margin: '0 auto', padding: 24 }}>
-      <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 8 }}>드래프트</h2>
+      <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 8 }}>드래프트 · {mode === 'double-battle' ? '더블 배틀' : '클래식'}</h2>
       <p style={{ color: '#6b7280', marginBottom: 20 }}>
-        출전할 주사위 3개를 선택하세요. <strong>선택 순서 = 출전 순서</strong>입니다.
+        {mode === 'double-battle'
+          ? '1라운드 1개, 2라운드 1개, 3라운드 2개를 순서대로 고릅니다.'
+          : '출전할 주사위 3개를 선택하세요. 선택 순서가 출전 순서입니다.'}
       </p>
+
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+        {slotSizes.map((size, index) => (
+          <div key={index} style={{
+            padding: '6px 10px',
+            borderRadius: 999,
+            background: '#eef2ff',
+            color: '#4338ca',
+            fontSize: 12,
+            fontWeight: 700,
+          }}>
+            {index + 1}라운드 {size}개
+          </div>
+        ))}
+      </div>
 
       <div style={{
         display: 'flex',
@@ -212,7 +238,7 @@ export function DraftPhase({ myDice, aiDice, onConfirm }: DraftPhaseProps) {
       </div>
 
       <button
-        onClick={() => canConfirm && onConfirm(selected as [string, string, string])}
+        onClick={() => canConfirm && onConfirm(rounds)}
         disabled={!canConfirm}
         style={{
           width: '100%', padding: '12px 0', fontSize: 16, fontWeight: 600,
@@ -222,7 +248,7 @@ export function DraftPhase({ myDice, aiDice, onConfirm }: DraftPhaseProps) {
           color: '#fff',
         }}
       >
-        순서 선택 완료
+        {canConfirm ? '출전 순서 확정' : `${totalPickCount - selected.length}개 더 선택하세요`}
       </button>
     </div>
   )

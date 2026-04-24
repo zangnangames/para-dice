@@ -1,6 +1,6 @@
 import type { Server, Socket } from 'socket.io'
-import { applyRoundResult } from '@dice-game/core'
-import type { Die, RollResult } from '@dice-game/core'
+import { applyRoundResult, getRoundSlotSizes } from '@dice-game/core'
+import type { Die, GameMode, RollResult } from '@dice-game/core'
 import { prisma } from '../plugins/db.js'
 import { updateStatsOnMatchEnd } from '../lib/statsUpdater.js'
 import {
@@ -13,6 +13,20 @@ import {
 // 드래프트 타임아웃 타이머 (프로세스 로컬, Redis 직렬화 불필요)
 const draftTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const DRAFT_TIMEOUT_MS = 40_000
+
+function fromDbMode(mode: 'CLASSIC' | 'DOUBLE_BATTLE'): GameMode {
+  return mode === 'DOUBLE_BATTLE' ? 'double-battle' : 'classic'
+}
+
+function getAutoPick(dice: Die[], mode: GameMode): string[][] {
+  const sizes = getRoundSlotSizes(mode)
+  let cursor = 0
+  return sizes.map((size) => {
+    const picked = dice.slice(cursor, cursor + size).map((die) => die.id)
+    cursor += size
+    return picked
+  }) as string[][]
+}
 
 function clearDraftTimer(matchId: string) {
   const t = draftTimers.get(matchId)
@@ -43,6 +57,7 @@ function getRestoreSnapshot(room: ReturnType<typeof createRoom>, playerIdx: 0 | 
   }
 
   return {
+    mode: room.mode,
     phase,
     currentRound: room.gameState.round,
     myPick: room.picks[playerIdx],
@@ -109,7 +124,7 @@ export function registerMatchRoom(io: Server, socket: Socket, userId: string) {
       if (player0 && player1) {
         // room 객체 생성/갱신 (picks·gameState 등 나머지 상태 초기화)
         let room = await getRoom(matchId)
-        if (!room) room = createRoom(matchId, match.deckA, match.deckB)
+        if (!room) room = createRoom(matchId, match.deckA, match.deckB, fromDbMode(match.mode))
         room.players[0] = player0
         room.players[1] = player1
         await setRoom(matchId, room)
@@ -129,6 +144,7 @@ export function registerMatchRoom(io: Server, socket: Socket, userId: string) {
         })
 
         io.to(player0.socketId).emit('room:ready', {
+          mode: room.mode,
           opponent: match.playerB,
           opponentDeck: match.deckB,
           myDeck: match.deckA,
@@ -136,6 +152,7 @@ export function registerMatchRoom(io: Server, socket: Socket, userId: string) {
           opponentStats: toStats(statsB),
         })
         io.to(player1.socketId).emit('room:ready', {
+          mode: room.mode,
           opponent: match.playerA,
           opponentDeck: match.deckA,
           myDeck: match.deckB,
@@ -153,7 +170,7 @@ export function registerMatchRoom(io: Server, socket: Socket, userId: string) {
   })
 
   // ── draft:pick ────────────────────────────────────────────
-  socket.on('draft:pick', async ({ matchId, diceIds }: { matchId: string; diceIds: string[] }) => {
+  socket.on('draft:pick', async ({ matchId, rounds }: { matchId: string; rounds: string[][] }) => {
     try {
       const room = await getRoom(matchId)
       if (!room) return
@@ -161,7 +178,7 @@ export function registerMatchRoom(io: Server, socket: Socket, userId: string) {
       const playerIdx = room.players.findIndex(p => p?.socketId === socket.id)
       if (playerIdx === -1) return
 
-      room.picks[playerIdx] = diceIds
+      room.picks[playerIdx] = rounds
       await setRoom(matchId, room)
 
       // 상대방에게 "상대가 봉인 완료" 알림
@@ -181,7 +198,7 @@ export function registerMatchRoom(io: Server, socket: Socket, userId: string) {
 
   // ── round:roll ────────────────────────────────────────────
   // 클라이언트가 주사위를 던진 뒤 호출. 양쪽 모두 던지면 서버가 결과 결정.
-  socket.on('round:roll', async ({ matchId, round, value }: { matchId: string; round: number; value: number }) => {
+  socket.on('round:roll', async ({ matchId, round, values }: { matchId: string; round: number; values: number[] }) => {
     try {
       const room = await getRoom(matchId)
       if (!room || !room.picks[0] || !room.picks[1]) return
@@ -193,15 +210,24 @@ export function registerMatchRoom(io: Server, socket: Socket, userId: string) {
       if (room.roundReady[playerIdx]) return
 
       const roundIdx = round - 1
-      const myDie = room.decks[playerIdx].dice.find((d: Die) => d.id === room.picks![playerIdx]![roundIdx])
-      if (!myDie) return
-      if (!myDie.faces.includes(value)) {
-        socket.emit('error', { message: '유효하지 않은 주사위 눈입니다' })
+      const roundDieIds = room.picks[playerIdx]![roundIdx]
+      const myDice = roundDieIds
+        .map((dieId) => room.decks[playerIdx].dice.find((d: Die) => d.id === dieId))
+        .filter(Boolean) as Die[]
+      if (myDice.length !== roundDieIds.length) return
+      if (values.length !== myDice.length) {
+        socket.emit('error', { message: '현재 라운드 주사위 수와 제출 값 수가 맞지 않습니다' })
         return
+      }
+      for (const [index, die] of myDice.entries()) {
+        if (!die.faces.includes(values[index])) {
+          socket.emit('error', { message: '유효하지 않은 주사위 눈입니다' })
+          return
+        }
       }
 
       room.roundReady[playerIdx] = true
-      room.roundValues[playerIdx] = value
+      room.roundValues[playerIdx] = values
       await setRoom(matchId, room)
 
       // 상대방에게 "상대가 던짐" 알림
@@ -211,11 +237,15 @@ export function registerMatchRoom(io: Server, socket: Socket, userId: string) {
 
       // 양쪽 모두 던진 경우 → 서버가 라운드 결과 결정
       if (room.roundReady[0] && room.roundReady[1]) {
-        const myRoll = room.roundValues[0]
-        const oppRoll = room.roundValues[1]
-        if (myRoll === null || oppRoll === null) return
+        const myRolls = room.roundValues[0]
+        const oppRolls = room.roundValues[1]
+        if (myRolls === null || oppRolls === null) return
+        const myRoll = myRolls.reduce((sum, value) => sum + value, 0)
+        const oppRoll = oppRolls.reduce((sum, value) => sum + value, 0)
 
         const roll = {
+          myRolls,
+          oppRolls,
           myRoll,
           oppRoll,
           result: myRoll > oppRoll ? 'win' as const : myRoll < oppRoll ? 'lose' as const : 'draw' as const,
@@ -274,6 +304,7 @@ export function registerMatchRoom(io: Server, socket: Socket, userId: string) {
             matchId,
             [room.players[0]!, room.players[1]!],
             [room.decks[0].id, room.decks[1].id],
+            room.mode,
           )
 
           await deleteRoom(matchId)
@@ -313,6 +344,7 @@ export function registerMatchRoom(io: Server, socket: Socket, userId: string) {
             playerBId: finalInfo.players[1].userId,
             deckAId:   finalInfo.deckIds[0],
             deckBId:   finalInfo.deckIds[1],
+            mode:      finalInfo.mode === 'double-battle' ? 'DOUBLE_BATTLE' : 'CLASSIC',
             state:     'DRAFT',
           },
         })
@@ -413,7 +445,7 @@ function startDraftTimeout(io: Server, matchId: string) {
     let changed = false
     for (let i = 0; i < 2; i++) {
       if (!room.picks[i]) {
-        room.picks[i] = room.decks[i].dice.slice(0, 3).map((d: Die) => d.id)
+        room.picks[i] = getAutoPick(room.decks[i].dice, room.mode)
         changed = true
         const player = room.players[i]
         if (player) io.to(player.socketId).emit('draft:timeout')

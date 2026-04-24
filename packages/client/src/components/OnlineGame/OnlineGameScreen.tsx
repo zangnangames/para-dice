@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react'
 import { socket } from '@/lib/socket'
 import { useAuthStore } from '@/store/authStore'
 import { createInitialGameState } from '@dice-game/core'
-import type { Die, GameState, RollResult } from '@dice-game/core'
+import type { Die, GameMode, GameState, RollResult } from '@dice-game/core'
 import { PhysicsDice } from '../Simulator/PhysicsDice'
 import { MatchIntroScreen } from './MatchIntroScreen'
 import { OnlineDraftPhase } from './OnlineDraftPhase'
@@ -28,22 +28,24 @@ interface Opponent {
 
 interface OnlineGameScreenProps {
   matchId: string
+  mode: GameMode
   onExit: () => void
   onRematch: (newMatchId: string) => void
 }
 
-export function OnlineGameScreen({ matchId, onExit, onRematch }: OnlineGameScreenProps) {
+export function OnlineGameScreen({ matchId, mode: initialMode, onExit, onRematch }: OnlineGameScreenProps) {
   const { user } = useAuthStore()
 
+  const [mode, setMode] = useState<GameMode>(initialMode)
   const [phase, setPhase] = useState<Phase>('joining')
   const [opponent, setOpponent] = useState<Opponent | null>(null)
   const [myStats, setMyStats] = useState<{ totalWins: number; totalLosses: number; currentStreak: number } | null>(null)
   const [opponentStats, setOpponentStats] = useState<{ totalWins: number; totalLosses: number; currentStreak: number } | null>(null)
   const [myDeck, setMyDeck] = useState<Die[]>([])
   const [oppDeck, setOppDeck] = useState<Die[]>([])
-  const [myPick, setMyPick] = useState<[string, string, string] | null>(null)
-  const [oppPick, setOppPick] = useState<[string, string, string] | null>(null)
-  const [gameState, setGameState] = useState<GameState>(createInitialGameState())
+  const [myPick, setMyPick] = useState<string[][] | null>(null)
+  const [oppPick, setOppPick] = useState<string[][] | null>(null)
+  const [gameState, setGameState] = useState<GameState>(createInitialGameState(initialMode))
   const [roundWinners, setRoundWinners] = useState<Array<'me' | 'opp'>>([])
   const [currentRound, setCurrentRound] = useState(1)
   const [lastRolls, setLastRolls] = useState<RollResult[]>([])
@@ -63,7 +65,8 @@ export function OnlineGameScreen({ matchId, onExit, onRematch }: OnlineGameScree
   useEffect(() => {
     if (!socket.connected) socket.connect()
 
-    socket.on('room:ready', ({ opponent: opp, myDeck: md, opponentDeck: od, myStats: ms, opponentStats: os }) => {
+    socket.on('room:ready', ({ mode: readyMode, opponent: opp, myDeck: md, opponentDeck: od, myStats: ms, opponentStats: os }) => {
+      setMode(readyMode ?? initialMode)
       setOpponent(opp)
       setMyDeck(md.dice ?? md)
       setOppDeck(od.dice ?? od)
@@ -73,6 +76,7 @@ export function OnlineGameScreen({ matchId, onExit, onRematch }: OnlineGameScree
     })
 
     socket.on('room:restore', ({
+      mode: restoredMode,
       phase: restoredPhase,
       currentRound,
       gameState: gs,
@@ -85,6 +89,7 @@ export function OnlineGameScreen({ matchId, onExit, onRematch }: OnlineGameScree
       hasRolled: restoredHasRolled,
       opponentRolled: restoredOpponentRolled,
     }) => {
+      if (restoredMode) setMode(restoredMode)
       if (gs) setGameState(gs)
       if (mp) setMyPick(mp)
       if (op) setOppPick(op)
@@ -195,7 +200,7 @@ export function OnlineGameScreen({ matchId, onExit, onRematch }: OnlineGameScree
       socket.off('rematch:matched')
       stopDraftTimer()
     }
-  }, [matchId, user?.userId])
+  }, [initialMode, matchId, user?.userId])
 
   const stopDraftTimer = () => {
     if (draftTimerRef.current) { clearInterval(draftTimerRef.current); draftTimerRef.current = null }
@@ -224,9 +229,9 @@ export function OnlineGameScreen({ matchId, onExit, onRematch }: OnlineGameScree
   }, [phase])
 
   // ── 드래프트 확정 ────────────────────────────────────────
-  const handleDraftConfirm = (ids: [string, string, string]) => {
-    socket.emit('draft:pick', { matchId, diceIds: ids })
-    setMyPick(ids)
+  const handleDraftConfirm = (rounds: string[][]) => {
+    socket.emit('draft:pick', { matchId, rounds })
+    setMyPick(rounds)
     // phase는 OnlineDraftPhase 내부에서 봉인 완료 UI로 전환
     // draft:done 수신 시 'round'로 전환됨
   }
@@ -236,10 +241,10 @@ export function OnlineGameScreen({ matchId, onExit, onRematch }: OnlineGameScree
   }
 
   // ── 주사위 물리 결과 (내 die settle 감지) ──────────────────
-  const handlePhysicsResult = (myVal: number, _oppVal: number) => {
+  const handlePhysicsResult = (myVals: number[], _oppVals: number[]) => {
     if (hasRolled) return
     setHasRolled(true)
-    socket.emit('round:roll', { matchId, round: currentRound, value: myVal })
+    socket.emit('round:roll', { matchId, round: currentRound, values: myVals })
     setPhase('waiting-opponent-roll')
   }
 
@@ -273,11 +278,11 @@ export function OnlineGameScreen({ matchId, onExit, onRematch }: OnlineGameScree
 
   // ── 현재 라운드의 주사위 ──────────────────────────────────
   const roundIdx = currentRound - 1
-  const myDie = myPick && myDeck.length > 0
-    ? myDeck.find(d => d.id === myPick[roundIdx]) ?? myDeck[0]
+  const myDice = myPick && myDeck.length > 0
+    ? myPick[roundIdx].map(id => myDeck.find(d => d.id === id) ?? myDeck[0]).filter(Boolean)
     : null
-  const oppDie = oppPick && oppDeck.length > 0
-    ? oppDeck.find(d => d.id === oppPick[roundIdx]) ?? oppDeck[0]
+  const oppDice = oppPick && oppDeck.length > 0
+    ? oppPick[roundIdx].map(id => oppDeck.find(d => d.id === id) ?? oppDeck[0]).filter(Boolean)
     : null
 
   // ─────────────────────────────────────────────────────────
@@ -314,6 +319,7 @@ export function OnlineGameScreen({ matchId, onExit, onRematch }: OnlineGameScree
     return (
       <div style={{ position: 'relative', height: '100%', fontFamily: 'system-ui, sans-serif' }}>
         <OnlineDraftPhase
+          mode={mode}
           myDice={myDeck}
           opponentDice={oppDeck}
           opponentNickname={opponent?.nickname ?? '상대'}
@@ -352,7 +358,7 @@ export function OnlineGameScreen({ matchId, onExit, onRematch }: OnlineGameScree
     )
   }
 
-  if ((phase === 'round' || phase === 'waiting-opponent-roll' || phase === 'round-result' || phase === 'round-draw') && myDie && oppDie) {
+  if ((phase === 'round' || phase === 'waiting-opponent-roll' || phase === 'round-result' || phase === 'round-draw') && myDice && oppDice) {
     const isRoundResult = phase === 'round-result'
     const isRoundDraw   = phase === 'round-draw'
     const isRoundWin = lastWinner === 'me'
@@ -362,8 +368,8 @@ export function OnlineGameScreen({ matchId, onExit, onRematch }: OnlineGameScree
       <div style={{ position: 'relative', height: '100%' }}>
         <PhysicsDice
           key={rollAttempt}
-          myDie={myDie}
-          oppDie={oppDie}
+          myDice={myDice}
+          oppDice={oppDice}
           onResult={handlePhysicsResult}
         />
 
@@ -405,13 +411,17 @@ export function OnlineGameScreen({ matchId, onExit, onRematch }: OnlineGameScree
           pointerEvents: 'none',
         }}>
           <span style={{ fontSize: 10, fontWeight: 700, color: '#92400e', marginRight: 2 }}>상대</span>
-          {[...oppDie.faces].sort((a, b) => b - a).map((face, i) => (
-            <div key={i} style={{
-              width: 24, height: 24, borderRadius: 6,
-              background: '#fff7ed', border: '1px solid rgba(148,163,184,0.3)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 11, fontWeight: 700, color: '#9a3412',
-            }}>{face}</div>
+          {oppDice.map((die) => (
+            <div key={die.id} style={{ display: 'flex', gap: 4 }}>
+              {[...die.faces].sort((a, b) => b - a).map((face, i) => (
+                <div key={i} style={{
+                  width: 24, height: 24, borderRadius: 6,
+                  background: '#fff7ed', border: '1px solid rgba(148,163,184,0.3)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 11, fontWeight: 700, color: '#9a3412',
+                }}>{face}</div>
+              ))}
+            </div>
           ))}
         </div>
 
@@ -425,13 +435,17 @@ export function OnlineGameScreen({ matchId, onExit, onRematch }: OnlineGameScree
           pointerEvents: 'none',
         }}>
           <span style={{ fontSize: 10, fontWeight: 700, color: '#1e40af', marginRight: 2 }}>나</span>
-          {[...myDie.faces].sort((a, b) => b - a).map((face, i) => (
-            <div key={i} style={{
-              width: 24, height: 24, borderRadius: 6,
-              background: '#eff6ff', border: '1px solid rgba(148,163,184,0.3)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 11, fontWeight: 700, color: '#1e3a8a',
-            }}>{face}</div>
+          {myDice.map((die) => (
+            <div key={die.id} style={{ display: 'flex', gap: 4 }}>
+              {[...die.faces].sort((a, b) => b - a).map((face, i) => (
+                <div key={i} style={{
+                  width: 24, height: 24, borderRadius: 6,
+                  background: '#eff6ff', border: '1px solid rgba(148,163,184,0.3)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 11, fontWeight: 700, color: '#1e3a8a',
+                }}>{face}</div>
+              ))}
+            </div>
           ))}
         </div>
 
@@ -546,16 +560,34 @@ export function OnlineGameScreen({ matchId, onExit, onRematch }: OnlineGameScree
                       background: isDraw ? '#fefce8' : isWin ? '#f0fdf4' : '#fff1f2',
                       border: `1.5px solid ${isDraw ? '#fde047' : isWin ? '#86efac' : '#fecdd3'}`,
                     }}>
-                      <div style={{ textAlign: 'center', minWidth: 36 }}>
+                      <div style={{ textAlign: 'center', minWidth: 80 }}>
                         <div style={{ fontSize: 9, color: '#94a3b8', marginBottom: 2 }}>나</div>
-                        <div style={{ fontSize: 26, fontWeight: 900, color: '#1d4ed8', lineHeight: 1 }}>{roll.myRoll}</div>
+                        <div style={{ display: 'flex', gap: 6, justifyContent: 'center', marginBottom: 4 }}>
+                          {roll.myRolls.map((value, idx) => (
+                            <div key={idx} style={{
+                              width: 28, height: 28, borderRadius: 8, background: '#2563eb',
+                              color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              fontSize: 14, fontWeight: 900,
+                            }}>{value}</div>
+                          ))}
+                        </div>
+                        <div style={{ fontSize: 22, fontWeight: 900, color: '#1d4ed8', lineHeight: 1 }}>합 {roll.myRoll}</div>
                       </div>
                       <div style={{ fontSize: 11, fontWeight: 700, color: isDraw ? '#92400e' : isWin ? '#15803d' : '#be123c' }}>
                         {isDraw ? '⚖️ 동점' : isWin ? '🏆 승' : '💀 패'}
                       </div>
-                      <div style={{ textAlign: 'center', minWidth: 36 }}>
+                      <div style={{ textAlign: 'center', minWidth: 80 }}>
                         <div style={{ fontSize: 9, color: '#94a3b8', marginBottom: 2 }}>{opponent?.nickname}</div>
-                        <div style={{ fontSize: 26, fontWeight: 900, color: '#c2410c', lineHeight: 1 }}>{roll.oppRoll}</div>
+                        <div style={{ display: 'flex', gap: 6, justifyContent: 'center', marginBottom: 4 }}>
+                          {roll.oppRolls.map((value, idx) => (
+                            <div key={idx} style={{
+                              width: 28, height: 28, borderRadius: 8, background: '#ea580c',
+                              color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              fontSize: 14, fontWeight: 900,
+                            }}>{value}</div>
+                          ))}
+                        </div>
+                        <div style={{ fontSize: 22, fontWeight: 900, color: '#c2410c', lineHeight: 1 }}>합 {roll.oppRoll}</div>
                       </div>
                     </div>
                   )
@@ -646,14 +678,32 @@ export function OnlineGameScreen({ matchId, onExit, onRematch }: OnlineGameScree
                 background: '#fefce8', border: '1.5px solid #fde047',
                 marginBottom: 14,
               }}>
-                <div style={{ textAlign: 'center', minWidth: 36 }}>
+                <div style={{ textAlign: 'center', minWidth: 80 }}>
                   <div style={{ fontSize: 9, color: '#94a3b8', marginBottom: 2 }}>나</div>
-                  <div style={{ fontSize: 26, fontWeight: 900, color: '#1d4ed8', lineHeight: 1 }}>{latestRoll.myRoll}</div>
+                  <div style={{ display: 'flex', gap: 6, justifyContent: 'center', marginBottom: 4 }}>
+                    {latestRoll.myRolls.map((value, idx) => (
+                      <div key={idx} style={{
+                        width: 28, height: 28, borderRadius: 8, background: '#2563eb',
+                        color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 14, fontWeight: 900,
+                      }}>{value}</div>
+                    ))}
+                  </div>
+                  <div style={{ fontSize: 22, fontWeight: 900, color: '#1d4ed8', lineHeight: 1 }}>합 {latestRoll.myRoll}</div>
                 </div>
                 <div style={{ fontSize: 11, fontWeight: 700, color: '#92400e' }}>⚖️ 동점</div>
-                <div style={{ textAlign: 'center', minWidth: 36 }}>
+                <div style={{ textAlign: 'center', minWidth: 80 }}>
                   <div style={{ fontSize: 9, color: '#94a3b8', marginBottom: 2 }}>{opponent?.nickname}</div>
-                  <div style={{ fontSize: 26, fontWeight: 900, color: '#c2410c', lineHeight: 1 }}>{latestRoll.oppRoll}</div>
+                  <div style={{ display: 'flex', gap: 6, justifyContent: 'center', marginBottom: 4 }}>
+                    {latestRoll.oppRolls.map((value, idx) => (
+                      <div key={idx} style={{
+                        width: 28, height: 28, borderRadius: 8, background: '#ea580c',
+                        color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 14, fontWeight: 900,
+                      }}>{value}</div>
+                    ))}
+                  </div>
+                  <div style={{ fontSize: 22, fontWeight: 900, color: '#c2410c', lineHeight: 1 }}>합 {latestRoll.oppRoll}</div>
                 </div>
               </div>
 

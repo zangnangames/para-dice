@@ -1,12 +1,14 @@
 import { useEffect, useState, useRef } from 'react'
 import { socket } from '@/lib/socket'
+import type { GameMode } from '@dice-game/core'
 
 interface MatchmakingScreenProps {
-  onMatched: (matchId: string) => void
+  mode: GameMode
+  onMatched: (matchId: string, mode: GameMode) => void
   onCancel: () => void
 }
 
-export function MatchmakingScreen({ onMatched, onCancel }: MatchmakingScreenProps) {
+export function MatchmakingScreen({ mode, onMatched, onCancel }: MatchmakingScreenProps) {
   const [status, setStatus] = useState<'connecting' | 'waiting' | 'matched' | 'error'>('connecting')
   const [elapsed, setElapsed] = useState(0)
   const [errorMsg, setErrorMsg] = useState('')
@@ -15,7 +17,7 @@ export function MatchmakingScreen({ onMatched, onCancel }: MatchmakingScreenProp
   useEffect(() => {
     if (!socket.connected) socket.connect()
 
-    socket.emit('queue:join')
+    socket.emit('queue:join', { mode })
     setStatus('connecting')
 
     socket.on('queue:joined', () => {
@@ -23,11 +25,11 @@ export function MatchmakingScreen({ onMatched, onCancel }: MatchmakingScreenProp
       timerRef.current = setInterval(() => setElapsed(e => e + 1), 1000)
     })
 
-    socket.on('queue:matched', ({ matchId }: { matchId: string }) => {
+    socket.on('queue:matched', ({ matchId, mode }: { matchId: string; mode: GameMode }) => {
       setStatus('matched')
       if (timerRef.current) clearInterval(timerRef.current)
       // 잠깐 "매칭 성사!" 보여주고 이동
-      setTimeout(() => onMatched(matchId), 1200)
+      setTimeout(() => onMatched(matchId, mode), 1200)
     })
 
     socket.on('queue:error', ({ message }: { message: string }) => {
@@ -37,16 +39,16 @@ export function MatchmakingScreen({ onMatched, onCancel }: MatchmakingScreenProp
     })
 
     return () => {
-      socket.emit('queue:leave')
+      socket.emit('queue:leave', { mode })
       socket.off('queue:joined')
       socket.off('queue:matched')
       socket.off('queue:error')
       if (timerRef.current) clearInterval(timerRef.current)
     }
-  }, [])
+  }, [mode, onMatched])
 
   const handleCancel = () => {
-    socket.emit('queue:leave')
+    socket.emit('queue:leave', { mode })
     onCancel()
   }
 
@@ -107,7 +109,7 @@ export function MatchmakingScreen({ onMatched, onCancel }: MatchmakingScreenProp
 
         {status === 'waiting' && (
           <div style={{ fontSize: 13, color: '#94a3b8' }}>
-            실력이 비슷한 상대를 탐색하고 있습니다
+            {mode === 'double-battle' ? '더블 배틀 상대를 탐색하고 있습니다' : '실력이 비슷한 상대를 탐색하고 있습니다'}
           </div>
         )}
 

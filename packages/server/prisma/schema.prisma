@@ -76,6 +76,7 @@ model Match {
   playerBId  String
   deckAId    String
   deckBId    String
+  mode       GameMode   @default(CLASSIC)
   winnerId   String?
   state      MatchState @default(DRAFT)
   createdAt  DateTime   @default(now())
@@ -103,4 +104,9 @@ enum MatchState {
   DRAFT
   IN_PROGRESS
   FINISHED
+}
+
+enum GameMode {
+  CLASSIC
+  DOUBLE_BATTLE
 }

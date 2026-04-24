@@ -1,14 +1,19 @@
 import type { Server, Socket } from 'socket.io'
+import type { GameMode } from '@dice-game/core'
 import { redis } from '../plugins/redis.js'
 import { prisma } from '../plugins/db.js'
 
-const QUEUE_KEY = 'queue:waiting'
 const PRIVATE_ROOM_TTL = 600
 
 // userId → socketId 역방향 매핑 (큐 중복 가입 방지 + 탈퇴 처리)
-const queueSocketKey = (userId: string) => `queue:socket:${userId}`
+const queueKey = (mode: GameMode) => `queue:waiting:${mode}`
+const queueSocketKey = (userId: string, mode: GameMode) => `queue:socket:${mode}:${userId}`
 const privateRoomKey = (code: string) => `room:code:${code}`
 const privateRoomHostKey = (userId: string) => `room:host:${userId}`
+
+function toDbMode(mode: GameMode) {
+  return mode === 'double-battle' ? 'DOUBLE_BATTLE' : 'CLASSIC'
+}
 
 function generateRoomCode() {
   return String(Math.floor(1000 + Math.random() * 9000))
@@ -17,13 +22,13 @@ function generateRoomCode() {
 export function registerMatchmaking(io: Server, socket: Socket, userId: string) {
 
   // ── queue:join ──────────────────────────────────────────────
-  socket.on('queue:join', async () => {
+  socket.on('queue:join', async ({ mode = 'classic' }: { mode?: GameMode }) => {
     try {
       // 이미 큐에 있는지 확인
-      const existing = await redis.get(queueSocketKey(userId))
+      const existing = await redis.get(queueSocketKey(userId, mode))
       if (existing) {
         // 기존 소켓 ID 갱신 (재연결 시)
-        await redis.lrem(QUEUE_KEY, 0, `${userId}:${existing}`)
+        await redis.lrem(queueKey(mode), 0, `${userId}:${existing}`)
       }
 
       // 덱이 있는지 확인
@@ -39,13 +44,13 @@ export function registerMatchmaking(io: Server, socket: Socket, userId: string) 
 
       // 큐에 등록
       const entry = `${userId}:${socket.id}`
-      await redis.rpush(QUEUE_KEY, entry)
-      await redis.set(queueSocketKey(userId), socket.id, 'EX', 300)
+      await redis.rpush(queueKey(mode), entry)
+      await redis.set(queueSocketKey(userId, mode), socket.id, 'EX', 300)
 
-      const position = await redis.llen(QUEUE_KEY)
-      socket.emit('queue:joined', { position })
+      const position = await redis.llen(queueKey(mode))
+      socket.emit('queue:joined', { position, mode })
 
-      await tryMatch(io)
+      await tryMatch(io, mode)
     } catch (err) {
       console.error('queue:join error', err)
       socket.emit('queue:error', { message: '매칭 큐 참가 실패' })
@@ -53,13 +58,13 @@ export function registerMatchmaking(io: Server, socket: Socket, userId: string) 
   })
 
   // ── queue:leave ─────────────────────────────────────────────
-  socket.on('queue:leave', async () => {
-    await removeFromQueue(userId, socket.id)
+  socket.on('queue:leave', async ({ mode = 'classic' }: { mode?: GameMode } = {}) => {
+    await removeFromQueue(userId, socket.id, mode)
     socket.emit('queue:left')
   })
 
   // ── room:create ────────────────────────────────────────────
-  socket.on('room:create', async () => {
+  socket.on('room:create', async ({ mode = 'classic' }: { mode?: GameMode } = {}) => {
     try {
       const deck = await prisma.deck.findFirst({
         where: { userId },
@@ -86,13 +91,13 @@ export function registerMatchmaking(io: Server, socket: Socket, userId: string) 
 
       await redis.set(
         privateRoomKey(code),
-        JSON.stringify({ hostUserId: userId, hostSocketId: socket.id, hostDeckId: deck.id }),
+        JSON.stringify({ hostUserId: userId, hostSocketId: socket.id, hostDeckId: deck.id, mode }),
         'EX',
         PRIVATE_ROOM_TTL,
       )
       await redis.set(privateRoomHostKey(userId), code, 'EX', PRIVATE_ROOM_TTL)
 
-      socket.emit('room:created', { code })
+      socket.emit('room:created', { code, mode })
     } catch (err) {
       console.error('room:create error', err)
       socket.emit('room:error', { message: '방 생성에 실패했습니다' })
@@ -108,7 +113,7 @@ export function registerMatchmaking(io: Server, socket: Socket, userId: string) 
         return
       }
 
-      const room = JSON.parse(raw) as { hostUserId: string; hostSocketId: string; hostDeckId: string }
+      const room = JSON.parse(raw) as { hostUserId: string; hostSocketId: string; hostDeckId: string; mode?: GameMode }
       if (room.hostUserId === userId) {
         socket.emit('room:error', { message: '내가 만든 방에는 입장할 수 없습니다' })
         return
@@ -140,6 +145,7 @@ export function registerMatchmaking(io: Server, socket: Socket, userId: string) 
           playerBId: userId,
           deckAId: room.hostDeckId,
           deckBId: deck.id,
+          mode: toDbMode(room.mode ?? 'classic'),
           state: 'DRAFT',
         },
       })
@@ -149,8 +155,8 @@ export function registerMatchmaking(io: Server, socket: Socket, userId: string) 
         redis.del(privateRoomHostKey(room.hostUserId)),
       ])
 
-      io.to(room.hostSocketId).emit('room:matched', { matchId: match.id, code })
-      socket.emit('room:matched', { matchId: match.id, code })
+      io.to(room.hostSocketId).emit('room:matched', { matchId: match.id, code, mode: room.mode ?? 'classic' })
+      socket.emit('room:matched', { matchId: match.id, code, mode: room.mode ?? 'classic' })
     } catch (err) {
       console.error('room:enter error', err)
       socket.emit('room:error', { message: '방 입장에 실패했습니다' })
@@ -165,17 +171,20 @@ export function registerMatchmaking(io: Server, socket: Socket, userId: string) 
 
   // ── disconnect: 큐에 있으면 자동 제거 ──────────────────────
   socket.on('disconnect', async () => {
-    await removeFromQueue(userId, socket.id)
+    await Promise.all([
+      removeFromQueue(userId, socket.id, 'classic'),
+      removeFromQueue(userId, socket.id, 'double-battle'),
+    ])
     await removePrivateRoom(userId)
   })
 }
 
 // ── 큐 제거 헬퍼 ─────────────────────────────────────────────
 
-async function removeFromQueue(userId: string, socketId: string) {
+async function removeFromQueue(userId: string, socketId: string, mode: GameMode) {
   try {
-    await redis.lrem(QUEUE_KEY, 0, `${userId}:${socketId}`)
-    await redis.del(queueSocketKey(userId))
+    await redis.lrem(queueKey(mode), 0, `${userId}:${socketId}`)
+    await redis.del(queueSocketKey(userId, mode))
   } catch (err) {
     console.error('removeFromQueue error', err)
   }
@@ -197,12 +206,12 @@ async function removePrivateRoom(userId: string) {
 
 // ── 매칭 시도 ─────────────────────────────────────────────────
 
-async function tryMatch(io: Server) {
-  const len = await redis.llen(QUEUE_KEY)
+async function tryMatch(io: Server, mode: GameMode) {
+  const len = await redis.llen(queueKey(mode))
   if (len < 2) return
 
   // 원자적으로 2명 pop
-  const entries = await redis.lpop(QUEUE_KEY, 2)
+  const entries = await redis.lpop(queueKey(mode), 2)
   if (!entries || entries.length < 2) return
 
   const [userIdA, socketIdA] = entries[0].split(':')
@@ -210,7 +219,7 @@ async function tryMatch(io: Server) {
 
   // 같은 유저 두 번 매칭 방지 (탭 2개 등)
   if (userIdA === userIdB) {
-    await redis.rpush(QUEUE_KEY, entries[0])
+    await redis.rpush(queueKey(mode), entries[0])
     return
   }
 
@@ -231,12 +240,12 @@ async function tryMatch(io: Server) {
 
     // 덱 없으면 다시 큐로 복귀
     if (!deckA) {
-      await redis.rpush(QUEUE_KEY, entries[1]) // B는 복귀
+      await redis.rpush(queueKey(mode), entries[1]) // B는 복귀
       io.to(socketIdA).emit('queue:error', { message: '저장된 덱이 없습니다. 덱을 먼저 저장해주세요.' })
       return
     }
     if (!deckB) {
-      await redis.rpush(QUEUE_KEY, entries[0]) // A는 복귀
+      await redis.rpush(queueKey(mode), entries[0]) // A는 복귀
       io.to(socketIdB).emit('queue:error', { message: '저장된 덱이 없습니다. 덱을 먼저 저장해주세요.' })
       return
     }
@@ -248,28 +257,31 @@ async function tryMatch(io: Server) {
         playerBId: userIdB,
         deckAId: deckA.id,
         deckBId: deckB.id,
+        mode: toDbMode(mode),
         state: 'DRAFT',
       },
     })
 
     // 큐 소켓 매핑 정리
-    await redis.del(queueSocketKey(userIdA))
-    await redis.del(queueSocketKey(userIdB))
+    await redis.del(queueSocketKey(userIdA, mode))
+    await redis.del(queueSocketKey(userIdB, mode))
 
     // 양쪽에 매칭 성사 알림
     io.to(socketIdA).emit('queue:matched', {
       matchId: match.id,
       opponentDeck: deckB,
+      mode,
     })
     io.to(socketIdB).emit('queue:matched', {
       matchId: match.id,
       opponentDeck: deckA,
+      mode,
     })
 
-    console.log(`[Matchmaking] matched: ${userIdA} vs ${userIdB} → match ${match.id}`)
+    console.log(`[Matchmaking] matched: ${userIdA} vs ${userIdB} (${mode}) → match ${match.id}`)
   } catch (err) {
     // 매칭 실패 시 두 명 모두 큐 복귀
     console.error('tryMatch error', err)
-    await redis.rpush(QUEUE_KEY, entries[0], entries[1])
+    await redis.rpush(queueKey(mode), entries[0], entries[1])
   }
 }

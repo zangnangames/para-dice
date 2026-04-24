@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import type { GameMode } from '@dice-game/core'
 import { useAuthStore } from '@/store/authStore'
 import { api } from '@/lib/api'
 import { socket } from '@/lib/socket'
@@ -8,10 +9,12 @@ import { useProfileStore } from '@/store/profileStore'
 type HomeAction = 'idle' | 'room-create' | 'room-join' | 'room-matched'
 
 interface HomeScreenProps {
+  mode: GameMode
+  onModeChange: (mode: GameMode) => void
   onDeckEdit: () => void
   onAiTrain: () => void
   onRandomMatch: () => void
-  onPrivateMatch: (matchId: string) => void
+  onPrivateMatch: (matchId: string, mode: GameMode) => void
   onProfile: () => void
   onRanking: () => void
 }
@@ -23,7 +26,7 @@ interface Stats {
   maxStreak: number
 }
 
-export function HomeScreen({ onDeckEdit, onAiTrain, onRandomMatch, onPrivateMatch, onProfile, onRanking }: HomeScreenProps) {
+export function HomeScreen({ mode, onModeChange, onDeckEdit, onAiTrain, onRandomMatch, onPrivateMatch, onProfile, onRanking }: HomeScreenProps) {
   const { user } = useAuthStore()
   const { avatarColor } = useProfileStore()
   const [stats, setStats] = useState<Stats | null>(null)
@@ -50,11 +53,11 @@ export function HomeScreen({ onDeckEdit, onAiTrain, onRandomMatch, onPrivateMatc
       setAction('room-create')
     }
 
-    const handleMatched = ({ matchId }: { matchId: string }) => {
+    const handleMatched = ({ matchId, mode }: { matchId: string; mode: GameMode }) => {
       setRoomLoading(false)
       setAction('room-matched')
       // 1초 "매칭 성사!" 표시 후 이동
-      setTimeout(() => onPrivateMatch(matchId), 1000)
+      setTimeout(() => onPrivateMatch(matchId, mode), 1000)
     }
 
     const handleError = ({ message }: { message: string }) => {
@@ -112,7 +115,7 @@ export function HomeScreen({ onDeckEdit, onAiTrain, onRandomMatch, onPrivateMatc
     setCopied(false)
     setRoomLoading(true)
     setAction('room-create')
-    socket.emit('room:create')
+    socket.emit('room:create', { mode })
   }
 
   const handleCopyCode = () => {
@@ -171,6 +174,19 @@ export function HomeScreen({ onDeckEdit, onAiTrain, onRandomMatch, onPrivateMatc
 
       {/* ② 덱 편집 */}
       <RowButton icon="🎲" label="덱 편집" sub="주사위 6면 구성 커스텀" color="#475569" bg="#f8fafc" border="#e2e8f0" onClick={onDeckEdit} />
+
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: '1fr 1fr',
+        gap: 8,
+        padding: 6,
+        borderRadius: 16,
+        background: '#fff',
+        border: '1px solid #e2e8f0',
+      }}>
+        <ModeButton active={mode === 'classic'} title="클래식" sub="1R 1개 · 2R 1개 · 3R 1개" onClick={() => onModeChange('classic')} />
+        <ModeButton active={mode === 'double-battle'} title="더블 배틀" sub="1R 1개 · 2R 1개 · 3R 2개" onClick={() => onModeChange('double-battle')} />
+      </div>
 
       {/* 구분선 */}
       <div style={{ height: 1, background: '#e2e8f0', margin: '4px 0' }} />
@@ -288,6 +304,32 @@ export function HomeScreen({ onDeckEdit, onAiTrain, onRandomMatch, onPrivateMatc
       <RowButton icon="🏆" label="덱 랭킹" sub="전체 플레이어 덱 승률 순위" color="#b45309" bg="#fffbeb" border="#fde68a" onClick={onRanking} />
 
     </div>
+  )
+}
+
+function ModeButton({ active, title, sub, onClick }: {
+  active: boolean
+  title: string
+  sub: string
+  onClick: () => void
+}) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        border: 'none',
+        borderRadius: 12,
+        background: active ? 'linear-gradient(135deg, #2563eb 0%, #4f46e5 100%)' : '#f8fafc',
+        color: active ? '#fff' : '#334155',
+        textAlign: 'left',
+        padding: '12px 12px 11px',
+        cursor: 'pointer',
+        fontFamily: 'inherit',
+      }}
+    >
+      <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 3 }}>{title}</div>
+      <div style={{ fontSize: 11, opacity: active ? 0.9 : 0.7 }}>{sub}</div>
+    </button>
   )
 }
 

@@ -13,6 +13,7 @@ import { useAuthStore } from './store/authStore'
 import { useDeckStore } from './store/deckStore'
 import { useTutorialStore } from './store/tutorialStore'
 import { socket } from './lib/socket'
+import type { GameMode } from '@dice-game/core'
 
 type Screen =
   | 'home'
@@ -31,6 +32,8 @@ export default function App() {
   const [showTutorial, setShowTutorial] = useState(false)
   const [guestMode, setGuestMode] = useState(false)
   const [currentMatchId, setCurrentMatchId] = useState<string | null>(null)
+  const [selectedMode, setSelectedMode] = useState<GameMode>('classic')
+  const [currentMatchMode, setCurrentMatchMode] = useState<GameMode>('classic')
   const [kickedMsg, setKickedMsg] = useState<string | null>(null)
   const [isAuthCallback, setIsAuthCallback] = useState(() =>
     window.location.pathname === '/auth/callback' ||
@@ -108,7 +111,7 @@ export default function App() {
     return (
       <div style={{ height: '100%', background: '#fff', fontFamily: 'system-ui, sans-serif' }}>
         {KickedBanner}
-        <Simulator onBack={() => setScreen('home')} />
+        <Simulator mode={selectedMode} onBack={() => setScreen('home')} />
       </div>
     )
   }
@@ -118,8 +121,10 @@ export default function App() {
       <div style={{ height: '100%', background: '#fff', fontFamily: 'system-ui, sans-serif' }}>
         {KickedBanner}
         <MatchmakingScreen
-          onMatched={(matchId) => {
+          mode={selectedMode}
+          onMatched={(matchId, mode) => {
             setCurrentMatchId(matchId)
+            setCurrentMatchMode(mode)
             setScreen('online-game')
           }}
           onCancel={() => setScreen('home')}
@@ -135,6 +140,7 @@ export default function App() {
         <OnlineGameScreen
           key={currentMatchId}
           matchId={currentMatchId}
+          mode={currentMatchMode}
           onExit={() => { setCurrentMatchId(null); setScreen('home') }}
           onRematch={(newMatchId) => setCurrentMatchId(newMatchId)}
         />
@@ -197,11 +203,14 @@ export default function App() {
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
         {screen === 'home' && loggedIn && (
           <HomeScreen
+            mode={selectedMode}
+            onModeChange={setSelectedMode}
             onDeckEdit={() => setScreen('deck-edit')}
             onAiTrain={() => setScreen('simulator')}
             onRandomMatch={() => setScreen('matchmaking')}
-            onPrivateMatch={(matchId) => {
+            onPrivateMatch={(matchId, mode) => {
               setCurrentMatchId(matchId)
+              setCurrentMatchMode(mode)
               setScreen('online-game')
             }}
             onProfile={() => setScreen('profile')}
@@ -211,6 +220,7 @@ export default function App() {
 
         {screen === 'home' && !loggedIn && (
           <div style={{ maxWidth: 420, margin: '0 auto', padding: '24px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <ModeSelector mode={selectedMode} onChange={setSelectedMode} />
             <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b', marginBottom: 4 }}>게스트 모드</div>
             <GuestMenuButton icon="🤖" label="AI 훈련" sub="AI 상대와 연습 (저장 안됨)" onClick={() => setScreen('simulator')} />
             <GuestMenuButton icon="🎲" label="덱 편집" sub="주사위 6면 구성 커스텀" onClick={() => setScreen('deck-edit')} />
@@ -233,6 +243,54 @@ export default function App() {
         )}
       </div>
     </div>
+  )
+}
+
+function ModeSelector({ mode, onChange }: { mode: GameMode; onChange: (mode: GameMode) => void }) {
+  return (
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: '1fr 1fr',
+      gap: 8,
+      padding: 6,
+      borderRadius: 16,
+      background: '#fff',
+      border: '1px solid #e2e8f0',
+    }}>
+      <ModeButton
+        active={mode === 'classic'}
+        title="클래식"
+        sub="1R 1개 · 2R 1개 · 3R 1개"
+        onClick={() => onChange('classic')}
+      />
+      <ModeButton
+        active={mode === 'double-battle'}
+        title="더블 배틀"
+        sub="1R 1개 · 2R 1개 · 3R 2개"
+        onClick={() => onChange('double-battle')}
+      />
+    </div>
+  )
+}
+
+function ModeButton({ active, title, sub, onClick }: { active: boolean; title: string; sub: string; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        border: 'none',
+        borderRadius: 12,
+        background: active ? 'linear-gradient(135deg, #2563eb 0%, #4f46e5 100%)' : '#f8fafc',
+        color: active ? '#fff' : '#334155',
+        textAlign: 'left',
+        padding: '12px 12px 11px',
+        cursor: 'pointer',
+        fontFamily: 'inherit',
+      }}
+    >
+      <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 3 }}>{title}</div>
+      <div style={{ fontSize: 11, opacity: active ? 0.9 : 0.7 }}>{sub}</div>
+    </button>
   )
 }
 
