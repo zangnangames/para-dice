@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { GameMode, GameState, RollResult } from '@dice-game/core'
 import { createInitialGameState, applyRoundResult } from '@dice-game/core'
+import { clearGameRuntimeCache } from '@/lib/runtimeCache'
 import { useDeckStore } from '@/store/deckStore'
 import { generateAiDeck } from '@/simulator/aiDeck'
 import { DraftPhase } from './DraftPhase'
@@ -30,6 +31,7 @@ export function Simulator({ mode, onBack }: SimulatorProps) {
   }
 
   const handleRoundEnd = (rolls: RollResult[], winner: 'me' | 'opp') => {
+    void clearGameRuntimeCache()
     const next = applyRoundResult(gameState, rolls, winner)
     setGameState(next)
     setRoundWinners(prev => [...prev, winner])
@@ -39,6 +41,7 @@ export function Simulator({ mode, onBack }: SimulatorProps) {
   }
 
   const handleRestart = () => {
+    void clearGameRuntimeCache()
     setPhase('draft')
     setDraftRounds(null)
     setGameState(createInitialGameState(mode))

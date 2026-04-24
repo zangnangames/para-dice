@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { socket } from '@/lib/socket'
+import { clearGameRuntimeCache } from '@/lib/runtimeCache'
 import { useAuthStore } from '@/store/authStore'
 import { createInitialGameState } from '@dice-game/core'
 import type { Die, GameMode, GameState, RollResult } from '@dice-game/core'
@@ -173,6 +174,7 @@ export function OnlineGameScreen({ matchId, mode: initialMode, onExit, onRematch
       const iWon = winnerUserId === user?.userId
       setLastWinner(iWon ? 'me' : 'opp')
       if (forfeit) setIsForfeitWin(true)
+      void clearGameRuntimeCache()
       setPhase('game-over')
     })
 
@@ -268,6 +270,7 @@ export function OnlineGameScreen({ matchId, mode: initialMode, onExit, onRematch
 
   // ── 다음 라운드 ──────────────────────────────────────────
   const handleNextRound = () => {
+    void clearGameRuntimeCache()
     const nextRound = currentRound + 1
     setCurrentRound(nextRound)
     setLastRolls([])
@@ -277,6 +280,7 @@ export function OnlineGameScreen({ matchId, mode: initialMode, onExit, onRematch
   }
 
   const handleReroll = () => {
+    void clearGameRuntimeCache()
     setHasRolled(false)
     setOpponentRolled(false)
     setRollAttempt(a => a + 1)
